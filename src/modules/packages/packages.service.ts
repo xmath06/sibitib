@@ -37,7 +37,13 @@ export const packageService = {
       orderBy: (t, { desc }) => [desc(t.title)],
       limit,
       offset,
-      with: { subject: true, packageQuestions: { columns: { id: true } } },
+      with: {
+        subject: true,
+        packageQuestions: {
+          columns: { id: true },
+          with: { question: { columns: { questionType: true } } },
+        },
+      },
     });
     const total = await db
       .select({ value: count() })
@@ -45,10 +51,14 @@ export const packageService = {
       .where(where);
 
     return {
-      data: rows.map(({ packageQuestions, ...rest }) => ({
-        ...rest,
-        questionCount: packageQuestions.length,
-      })),
+      data: rows.map(({ packageQuestions, ...rest }) => {
+        const typeCounts: Record<string, number> = {};
+        for (const pq of packageQuestions) {
+          const t = pq.question.questionType;
+          typeCounts[t] = (typeCounts[t] ?? 0) + 1;
+        }
+        return { ...rest, questionCount: packageQuestions.length, questionTypeCounts: typeCounts };
+      }),
       pagination: { page, limit, total: total[0]?.value ?? 0 },
     };
   },
