@@ -1,7 +1,16 @@
 import { and, eq } from "drizzle-orm";
+import { Paragraph, Table } from "docx";
 import { db } from "@/db";
 import { studentExams, studentAnswers } from "@/db/schema";
 import { notFound, badRequest } from "@/middleware/errors";
+import {
+  buildDocx,
+  paragraph,
+  optionParagraph,
+  questionParagraph,
+  htmlToDocxBlocks,
+  slugify,
+} from "@/utils/docx";
 
 export interface GradeEssayInput {
   questionId: string;
@@ -15,7 +24,7 @@ export const gradingService = {
     const se = await db.query.studentExams.findFirst({
       where: eq(studentExams.id, studentExamId),
       with: {
-        student: true,
+        student: { with: { class: true } },
         schedule: {
           with: {
             package: {
@@ -130,5 +139,86 @@ export const gradingService = {
       .where(eq(studentExams.id, studentExamId));
 
     return { success: true, data: { studentExamId, totalScore: total, status } };
+  },
+
+  async exportDocx(studentExamId: string): Promise<{ buffer: Uint8Array; filename: string }> {
+    const se = await this.getStudentExam(studentExamId);
+    const questions = se.schedule?.package?.packageQuestions ?? [];
+    const answersByQ = new Map<string, (typeof se.answers)[number][]>();
+    for (const a of se.answers) {
+      const arr = answersByQ.get(a.questionId) ?? [];
+      arr.push(a);
+      answersByQ.set(a.questionId, arr);
+    }
+
+    const children: (Paragraph | Table)[] = [];
+    children.push(paragraph("HASIL UJIAN SISWA", { bold: true, align: "center" }));
+    children.push(paragraph(se.schedule?.title ?? "Ujian", { align: "center" }));
+    children.push(paragraph(""));
+    children.push(
+      paragraph(
+        `Nama: ${se.student?.name ?? "-"}   |   NIS: ${se.student?.username ?? "-"}   |   Kelas: ${se.student?.class?.name ?? "-"}`,
+      ),
+    );
+    children.push(
+      paragraph(
+        `Status: ${se.status}   |   Nilai: ${Number(se.totalScore ?? 0)}   |   Dikumpulkan: ${se.submittedAt ? new Date(se.submittedAt).toLocaleString("id-ID") : "-"}`,
+      ),
+    );
+    children.push(paragraph(""));
+
+    questions.forEach((pq, idx) => {
+      const q = pq.question;
+      children.push(questionParagraph(idx + 1, q.questionText));
+
+      if (q.questionType !== "ESSAY") {
+        q.options.forEach((o, oi) => {
+          const letter = String.fromCharCode(65 + oi);
+          const detail =
+            (q.questionType === "POLY_CHOICE" || q.questionType === "MULTI_SELECT") &&
+            o.scoreWeight != null
+              ? `  (bobot ${o.scoreWeight})`
+              : "";
+          children.push(optionParagraph(letter, o.optionText, detail));
+        });
+      }
+
+      const ans = answersByQ.get(q.id) ?? [];
+      const first = ans[0];
+      if (q.questionType === "ESSAY") {
+        children.push(paragraph(`   Jawaban siswa${first?.wordCount != null ? ` (${first.wordCount} kata)` : ""}:`));
+        if (first?.essayAnswer) {
+          children.push(...htmlToDocxBlocks(first.essayAnswer, 360));
+        } else {
+          children.push(paragraph("   (tidak dijawab)"));
+        }
+      } else {
+        const letters = ans
+          .map((a) => {
+            const oi = q.options.findIndex((o) => o.id === a.selectedOptionId);
+            return oi >= 0 ? String.fromCharCode(65 + oi) : "";
+          })
+          .filter(Boolean);
+        const jawaban = letters.length ? letters.join(", ") : "—";
+        const benar =
+          q.questionType !== "MULTI_SELECT" && first?.selectedOption
+            ? Number(first.selectedOption.scoreWeight ?? 0) > 0
+            : undefined;
+        children.push(
+          paragraph(
+            `   Jawaban siswa: ${jawaban}${benar !== undefined ? (benar ? "   (Benar)" : "   (Salah)") : ""}`,
+          ),
+        );
+      }
+
+      const score = first?.score != null ? String(first.score) : "belum dinilai";
+      children.push(paragraph(`   Nilai: ${score}`));
+      if (first?.teacherFeedback) {
+        children.push(paragraph(`   Catatan guru: ${first.teacherFeedback}`));
+      }
+    });
+
+    const buffer = await buildDocx(children, { title: `Hasil Ujian - ${se.student?.name ?? ""}` });
+    return { buffer, filename: `hasil-${slugify(se.student?.name ?? "siswa")}.docx` };
   },
 };

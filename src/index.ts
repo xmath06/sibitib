@@ -28,6 +28,7 @@ export const app = new Elysia({ prefix: "/api/v1" })
       origin: config.corsOrigins,
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      exposeHeaders: ["Content-Disposition"],
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       maxAge: 86400,
     }),

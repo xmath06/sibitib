@@ -29,6 +29,23 @@ export const packagesController = new Elysia({
       detail: { summary: "Get package with questions" },
     },
   )
+  .get(
+    "/:id/export",
+    async ({ params }) => {
+      const { buffer, filename } = await packageService.exportDocx(params.id);
+      return new Response(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      detail: { summary: "Export package to DOCX" },
+    },
+  )
 
   .guard(requireRole("ADMIN", "TEACHER"))
   .post(

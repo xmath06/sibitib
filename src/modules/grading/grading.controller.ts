@@ -19,6 +19,25 @@ export const gradingController = new Elysia({
     },
   )
 
+  // Unduh jawaban siswa dalam bentuk DOCX
+  .get(
+    "/:studentExamId/export",
+    async ({ params }) => {
+      const { buffer, filename } = await gradingService.exportDocx(params.studentExamId);
+      return new Response(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    },
+    {
+      params: t.Object({ studentExamId: t.String() }),
+      detail: { summary: "Export student answers to DOCX" },
+    },
+  )
+
   // Input nilai manual & feedback esai (batch per soal)
   .post(
     "/:studentExamId/essays",

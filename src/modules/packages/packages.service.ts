@@ -1,7 +1,15 @@
 import { and, eq, ilike, count } from "drizzle-orm";
+import { Paragraph, Table } from "docx";
 import { db } from "@/db";
 import { examPackages, packageQuestions } from "@/db/schema";
 import { notFound } from "@/middleware/errors";
+import {
+  buildDocx,
+  paragraph,
+  optionParagraph,
+  questionParagraph,
+  slugify,
+} from "@/utils/docx";
 
 export interface CreatePackageInput {
   subjectId: string;
@@ -135,6 +143,60 @@ export const packageService = {
     if (!existing) throw notFound("Exam package not found");
     await db.delete(examPackages).where(eq(examPackages.id, id));
     return { success: true };
+  },
+
+  async exportDocx(id: string): Promise<{ buffer: Uint8Array; filename: string }> {
+    const pkg = await this.getById(id);
+
+    const children: (Paragraph | Table)[] = [];
+    children.push(paragraph("PAKET SOAL", { bold: true, align: "center" }));
+    children.push(
+      paragraph(`${pkg.subject?.code ?? ""} - ${pkg.subject?.name ?? ""}`, { align: "center" }),
+    );
+    children.push(paragraph(pkg.title, { bold: true, align: "center" }));
+    children.push(
+      paragraph(
+        `Jumlah soal: ${pkg.packageQuestions.length} | Durasi: ${pkg.durationMinutes ?? "tanpa batas"} menit | Pass: ${pkg.passScore ?? "-"}`,
+      ),
+    );
+    children.push(paragraph(""));
+
+    pkg.packageQuestions.forEach((pq, idx) => {
+      const q = pq.question;
+      children.push(questionParagraph(idx + 1, q.questionText));
+
+      if (q.questionType === "ESSAY") {
+        children.push(paragraph("   Jawaban:"));
+        if (q.minWordCount || q.maxWordCount) {
+          children.push(
+            paragraph(`   Batas kata: ${q.minWordCount ?? 0} - ${q.maxWordCount ?? "∞"}`),
+          );
+        }
+      } else {
+        q.options.forEach((o, oi) => {
+          const letter = String.fromCharCode(65 + oi);
+          const detail =
+            (q.questionType === "POLY_CHOICE" || q.questionType === "MULTI_SELECT") &&
+            o.scoreWeight != null
+              ? `  (bobot ${o.scoreWeight})`
+              : "";
+          children.push(optionParagraph(letter, o.optionText, detail));
+        });
+
+        if (q.questionType === "MULTI_SELECT") {
+          const keys = q.options
+            .map((o, oi) => (Number(o.scoreWeight ?? 0) > 0 ? String.fromCharCode(65 + oi) : ""))
+            .filter(Boolean);
+          if (keys.length) children.push(paragraph(`   Kunci: ${keys.join(", ")}`));
+        } else {
+          const keyIdx = q.options.findIndex((o) => Number(o.scoreWeight ?? 0) > 0);
+          if (keyIdx >= 0) children.push(paragraph(`   Kunci: ${String.fromCharCode(65 + keyIdx)}`));
+        }
+      }
+    });
+
+    const buffer = await buildDocx(children, { title: `Paket Soal - ${pkg.title}` });
+    return { buffer, filename: `paket-${slugify(pkg.title)}.docx` };
   },
 
   // Replace seluruh daftar soal paket (delete + insert) dgn orderNumber berurutan.
