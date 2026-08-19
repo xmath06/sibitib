@@ -36,9 +36,10 @@ export const app = new Elysia({ prefix: "/api/v1" })
    .use(
      swagger({
        path: "/docs",
-       // Vendor Scalar UI secara lokal (public/scalar/standalone.min.js)
-       // agar Swagger tetap jalan tanpa akses CDN (offline/terisolasi).
-       scalarCDN: "/api/v1/scalar/standalone.min.js",
+       // Sementara pakai CDN resmi Scalar untuk uji coba deploy SnapDeploy
+       // (bundle lokal 3.5MB diduga memicu false-positive AUP scanner).
+       scalarCDN:
+         "https://cdn.jsdelivr.net/npm/@scalar/api-reference@latest/dist/browser/standalone.min.js",
        documentation: {
         info: {
           title: "CBT & LMS API",
@@ -71,11 +72,10 @@ export const app = new Elysia({ prefix: "/api/v1" })
     { detail: { summary: "Health check" } },
   )
 
-  // Serve Scalar UI bundle secara lokal (offline-friendly).
-  // Elysia static serving bermasalah di setup ini, jadi di-handle manual.
-  .get("/scalar/standalone.min.js", () => Bun.file("public/scalar/standalone.min.js"), {
-    detail: { hide: true },
-  })
+  // Scalar UI bundle dialihkan sementara ke CDN (lihat komentar di atas).
+  // .get("/scalar/standalone.min.js", () => Bun.file("public/scalar/standalone.min.js"), {
+  //   detail: { hide: true },
+  // })
 
   // ===== Controllers (modular) =====
   .use(authController)
