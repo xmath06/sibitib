@@ -22,6 +22,18 @@ import { classesController } from "@/modules/classes";
 export const app = new Elysia({ prefix: "/api/v1" })
   // ===== Global error handler (harus terdaftar sebelum routes) =====
   .onError(handleError)
+  // ===== Root handler: platform (SnapDeploy) sering mengetuk "/" sebagai
+  // health check. Tanpa route ini ia jatuh ke 404/500 → container dianggap
+  // tidak sehat → restart loop. Balas 200 agar stabil. =====
+  .onRequest(({ request }) => {
+    const path = new URL(request.url).pathname;
+    if (path === "/" || path === "/health") {
+      return new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+  })
   // ===== CORS: support credentials (cookie) dari domain frontend =====
   .use(
     cors({
