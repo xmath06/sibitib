@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "bun run src/db/seed.ts",
+    "db:seed-contoh": "bun run src/db/seed-contoh.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },

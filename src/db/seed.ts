@@ -18,6 +18,15 @@ import {
   scheduleTargets,
 } from "@/db/schema";
 import { hashPassword } from "@/utils/password";
+import {
+  GEO_SQUARE,
+  GEO_TRI,
+  GEO_CUBE,
+  GEO_TWO,
+  TRIG_SINE_DEG,
+  TRIG_SINE_RAD,
+  TRIG_TWO,
+} from "@/db/data/sampleQuestions";
 
 async function main() {
   console.log("🌱 Seeding database...");
@@ -84,8 +93,16 @@ async function main() {
     .insert(topics)
     .values({ subjectId: matematika!.id, name: "Aljabar" })
     .returning();
+  const [geometri] = await db
+    .insert(topics)
+    .values({ subjectId: matematika!.id, name: "Geometri" })
+    .returning();
+  const [trigonometri] = await db
+    .insert(topics)
+    .values({ subjectId: matematika!.id, name: "Trigonometri" })
+    .returning();
 
-  console.log(`✓ Subject: ${matematika?.name}, Topic: ${aljabar?.name}`);
+  console.log(`✓ Subject: ${matematika?.name}, Topics: ${aljabar?.name}, ${geometri?.name}, ${trigonometri?.name}`);
 
   // ===== Questions & Options =====
   const [q1, q2, q3] = await db
@@ -122,6 +139,100 @@ async function main() {
   ]);
 
   console.log(`✓ Questions: ${q1?.questionType}, ${q2?.questionType}, ${q3?.questionType}`);
+
+  // ===== Contoh soal Geometri (dengan objek geometri 2D/3D) =====
+  const [gg1, gg2, gg3, gg4] = await db
+    .insert(questions)
+    .values([
+      {
+        topicId: geometri!.id,
+        questionText: GEO_SQUARE,
+        questionType: "MCQ",
+      },
+      {
+        topicId: geometri!.id,
+        questionText: GEO_TRI,
+        questionType: "MCQ",
+      },
+      {
+        topicId: geometri!.id,
+        questionText: GEO_CUBE,
+        questionType: "MCQ",
+      },
+      {
+        topicId: geometri!.id,
+        questionText: GEO_TWO,
+        questionType: "MCQ",
+      },
+    ])
+    .returning();
+
+  await db.insert(options).values([
+    // Luas persegi 4×4 = 16
+    { questionId: gg1!.id, optionText: "8", scoreWeight: "0" },
+    { questionId: gg1!.id, optionText: "12", scoreWeight: "0" },
+    { questionId: gg1!.id, optionText: "16", scoreWeight: "1" },
+    { questionId: gg1!.id, optionText: "24", scoreWeight: "0" },
+    // Keliling segitiga siku-siku 3-4-5 = 12
+    { questionId: gg2!.id, optionText: "7", scoreWeight: "0" },
+    { questionId: gg2!.id, optionText: "12", scoreWeight: "1" },
+    { questionId: gg2!.id, optionText: "14", scoreWeight: "0" },
+    { questionId: gg2!.id, optionText: "24", scoreWeight: "0" },
+    // Volume kubus 3³ = 27
+    { questionId: gg3!.id, optionText: "9", scoreWeight: "0" },
+    { questionId: gg3!.id, optionText: "18", scoreWeight: "0" },
+    { questionId: gg3!.id, optionText: "27", scoreWeight: "1" },
+    { questionId: gg3!.id, optionText: "54", scoreWeight: "0" },
+    // Luas bangun (a) persegi panjang 6×4 = 24
+    { questionId: gg4!.id, optionText: "20", scoreWeight: "0" },
+    { questionId: gg4!.id, optionText: "24", scoreWeight: "1" },
+    { questionId: gg4!.id, optionText: "30", scoreWeight: "0" },
+    { questionId: gg4!.id, optionText: "36", scoreWeight: "0" },
+  ]);
+
+  console.log(`✓ Soal contoh Geometri: ${gg1?.questionType}, ${gg2?.questionType}, ${gg3?.questionType}, ${gg4?.questionType}`);
+
+  // ===== Contoh soal Trigonometri (dengan grafik fungsi) =====
+  const [tg1, tg2, tg3] = await db
+    .insert(questions)
+    .values([
+      {
+        topicId: trigonometri!.id,
+        questionText: TRIG_SINE_DEG,
+        questionType: "MCQ",
+      },
+      {
+        topicId: trigonometri!.id,
+        questionText: TRIG_SINE_RAD,
+        questionType: "MCQ",
+      },
+      {
+        topicId: trigonometri!.id,
+        questionText: TRIG_TWO,
+        questionType: "MCQ",
+      },
+    ])
+    .returning();
+
+  await db.insert(options).values([
+    // sin 90° = 1
+    { questionId: tg1!.id, optionText: "0", scoreWeight: "0" },
+    { questionId: tg1!.id, optionText: "1", scoreWeight: "1" },
+    { questionId: tg1!.id, optionText: "0,5", scoreWeight: "0" },
+    { questionId: tg1!.id, optionText: "−1", scoreWeight: "0" },
+    // Grafik y = sin x: nilai maksimum 1, periode 2π
+    { questionId: tg2!.id, optionText: "Nilai maksimumnya 1 dan periode 2π", scoreWeight: "1" },
+    { questionId: tg2!.id, optionText: "Nilai maksimumnya 2 dan periode π", scoreWeight: "0" },
+    { questionId: tg2!.id, optionText: "Grafik memotong sumbu x hanya di x = 0", scoreWeight: "0" },
+    { questionId: tg2!.id, optionText: "Fungsi selalu bernilai positif", scoreWeight: "0" },
+    // sin 45° = cos 45°
+    { questionId: tg3!.id, optionText: "memiliki nilai yang sama", scoreWeight: "1" },
+    { questionId: tg3!.id, optionText: "memiliki nilai yang berlawanan tanda", scoreWeight: "0" },
+    { questionId: tg3!.id, optionText: "nilai sin lebih besar dari cos", scoreWeight: "0" },
+    { questionId: tg3!.id, optionText: "nilai cos lebih besar dari sin", scoreWeight: "0" },
+  ]);
+
+  console.log(`✓ Soal contoh Trigonometri: ${tg1?.questionType}, ${tg2?.questionType}, ${tg3?.questionType}`);
 
   // ===== Package & PackageQuestions =====
   const [pkg] = await db
