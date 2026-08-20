@@ -31,7 +31,7 @@ export const userService = {
     limit?: number;
   }) {
     const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const limit = Math.min(10000, Math.max(1, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
     const conditions = [];

@@ -36,7 +36,7 @@ export interface UpdatePackageInput {
 export const packageService = {
   async list(query: { search?: string; page?: number; limit?: number }) {
     const page = Math.max(1, query.page ?? 1);
-    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const limit = Math.min(10000, Math.max(1, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
     const where = query.search ? ilike(examPackages.title, `%${query.search}%`) : undefined;
