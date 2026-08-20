@@ -64,7 +64,7 @@ export const userService = {
     const exists = await db.query.users.findFirst({
       where: eq(users.username, input.username),
     });
-    if (exists) throw conflict("Username already taken");
+    if (exists) throw conflict(`Username "${input.username}" sudah digunakan`);
 
     const hash = await hashPassword(input.password);
     const [row] = await db
@@ -90,7 +90,7 @@ export const userService = {
       const dup = await db.query.users.findFirst({
         where: and(eq(users.username, input.username), ne(users.id, id)),
       });
-      if (dup) throw conflict("Username already taken");
+      if (dup) throw conflict(`Username "${input.username}" sudah digunakan`);
     }
 
     const set: Record<string, unknown> = {};
