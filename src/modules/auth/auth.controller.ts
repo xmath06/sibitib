@@ -43,9 +43,10 @@ export const authController = new Elysia({ prefix: "/auth", tags: ["Auth"] })
 
   .post(
     "/refresh",
-    async ({ cookie, jwt, refreshJwt }) => {
+    async ({ cookie, jwt, refreshJwt, set }) => {
       const refreshToken = String(cookie.refresh_token?.value ?? "");
       if (!refreshToken) {
+        set.status = 401;
         return {
           success: false,
           error: { code: "UNAUTHORIZED", message: "Missing refresh token cookie" },
@@ -54,6 +55,7 @@ export const authController = new Elysia({ prefix: "/auth", tags: ["Auth"] })
 
       const payload = await refreshJwt.verify(refreshToken);
       if (!payload) {
+        set.status = 401;
         return {
           success: false,
           error: { code: "UNAUTHORIZED", message: "Invalid refresh token" },
