@@ -11,22 +11,22 @@ import {
   slugify,
 } from "@/utils/docx";
 
-// Tipe soal selain MCQ: skornya tetap 1 × pengali paket (bukan bobot per-opsi).
-const NON_MCQ_TYPES = [
+// Tipe soal yang punya pengali skor di level paket.
+// MCQ berbobot per opsi, MULTI_SELECT skor tetap 1 (keduanya TANPA pengali).
+const PENGALI_TYPES = [
   "ESSAY",
   "URAIAN_PENDEK",
   "TRUE_FALSE",
   "POLY_CHOICE",
-  "MULTI_SELECT",
 ] as const;
 
-// Bobot pengali per tipe dari paket; default 1 untuk tiap tipe non-MCQ.
-// MCQ TIDAK masuk sini (skor murni dari score_weight opsi).
+// Bobot pengali per tipe dari paket; default 1 untuk tiap tipe dalam PENGALI_TYPES.
+// MCQ & MULTI_SELECT TIDAK masuk sini.
 function resolveTypeWeights(raw: unknown): Record<string, number> {
   const m: Record<string, number> = {};
-  for (const t of NON_MCQ_TYPES) m[t] = 1;
+  for (const t of PENGALI_TYPES) m[t] = 1;
   if (raw && typeof raw === "object") {
-    for (const t of NON_MCQ_TYPES) {
+    for (const t of PENGALI_TYPES) {
       const v = (raw as Record<string, unknown>)[t];
       if (v != null && Number(v) > 0) m[t] = Number(v);
     }
@@ -34,7 +34,8 @@ function resolveTypeWeights(raw: unknown): Record<string, number> {
   return m;
 }
 
-// Total nilai maksimal paket: non-MCQ = Σ(count × pengali); MCQ = Σ(max bobot opsi).
+// Total nilai maksimal paket: pengali-tipe = Σ(count × pengali);
+// MCQ = Σ(max bobot opsi); MULTI_SELECT & lainnya = Σ(1).
 function computeMaxScore(pkg: {
   typeScoreWeight?: unknown;
   packageQuestions?: { question: { questionType: string; options?: { scoreWeight?: string | number }[] } }[];
@@ -46,8 +47,10 @@ function computeMaxScore(pkg: {
     if (t === "MCQ") {
       const opts = pq.question.options ?? [];
       max += opts.reduce((mx, o) => Math.max(mx, Number(o.scoreWeight ?? 0)), 0);
-    } else if ((NON_MCQ_TYPES as readonly string[]).includes(t)) {
+    } else if ((PENGALI_TYPES as readonly string[]).includes(t)) {
       max += tw[t] ?? 1;
+    } else {
+      max += 1;
     }
   }
   return max;
