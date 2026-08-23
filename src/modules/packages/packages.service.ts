@@ -12,16 +12,17 @@ import {
 } from "@/utils/docx";
 
 // Tipe soal yang punya pengali skor di level paket.
-// MCQ berbobot per opsi, MULTI_SELECT skor tetap 1 (keduanya TANPA pengali).
+// POLY_CHOICE (Pilihan Ganda Berbobot) berbobot per opsi, MULTI_SELECT skor tetap 1
+// (keduanya TANPA pengali).
 const PENGALI_TYPES = [
   "ESSAY",
   "URAIAN_PENDEK",
   "TRUE_FALSE",
-  "POLY_CHOICE",
+  "MCQ",
 ] as const;
 
 // Bobot pengali per tipe dari paket; default 1 untuk tiap tipe dalam PENGALI_TYPES.
-// MCQ & MULTI_SELECT TIDAK masuk sini.
+// POLY_CHOICE & MULTI_SELECT TIDAK masuk sini.
 function resolveTypeWeights(raw: unknown): Record<string, number> {
   const m: Record<string, number> = {};
   for (const t of PENGALI_TYPES) m[t] = 1;
@@ -35,7 +36,7 @@ function resolveTypeWeights(raw: unknown): Record<string, number> {
 }
 
 // Total nilai maksimal paket: pengali-tipe = Σ(count × pengali);
-// MCQ = Σ(max bobot opsi); MULTI_SELECT & lainnya = Σ(1).
+// POLY_CHOICE = Σ(max bobot opsi); MULTI_SELECT & lainnya = Σ(1).
 function computeMaxScore(pkg: {
   typeScoreWeight?: unknown;
   packageQuestions?: { question: { questionType: string; options?: { scoreWeight?: string | number }[] } }[];
@@ -44,7 +45,7 @@ function computeMaxScore(pkg: {
   let max = 0;
   for (const pq of pkg.packageQuestions ?? []) {
     const t = pq.question.questionType;
-    if (t === "MCQ") {
+    if (t === "POLY_CHOICE") {
       const opts = pq.question.options ?? [];
       max += opts.reduce((mx, o) => Math.max(mx, Number(o.scoreWeight ?? 0)), 0);
     } else if ((PENGALI_TYPES as readonly string[]).includes(t)) {
@@ -230,8 +231,7 @@ export const packageService = {
         q.options.forEach((o, oi) => {
           const letter = String.fromCharCode(65 + oi);
           const detail =
-            (q.questionType === "POLY_CHOICE" || q.questionType === "MULTI_SELECT") &&
-            o.scoreWeight != null
+            q.questionType === "POLY_CHOICE" && o.scoreWeight != null
               ? `  (bobot ${o.scoreWeight})`
               : "";
           children.push(optionParagraph(letter, o.optionText, detail));

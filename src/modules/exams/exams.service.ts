@@ -13,16 +13,17 @@ import { badRequest, notFound, forbidden } from "@/middleware/errors";
 import { studentScheduleQueries } from "@/modules/schedules/schedules.service";
 
 // Tipe soal yang punya pengali skor di level paket.
-// MCQ berbobot per opsi, MULTI_SELECT skor tetap 1 (keduanya TANPA pengali).
+// POLY_CHOICE (Pilihan Ganda Berbobot) berbobot per opsi, MULTI_SELECT skor tetap 1
+// (keduanya TANPA pengali).
 const PENGALI_TYPES = [
   "ESSAY",
   "URAIAN_PENDEK",
   "TRUE_FALSE",
-  "POLY_CHOICE",
+  "MCQ",
 ] as const;
 
 // Bobot pengali per tipe dari paket; default 1 untuk tiap tipe dalam PENGALI_TYPES.
-// MCQ & MULTI_SELECT TIDAK masuk sini (skor murni dari score_weight opsi / tetap 1).
+// POLY_CHOICE & MULTI_SELECT TIDAK masuk sini (skor murni dari score_weight opsi / tetap 1).
 function resolveTypeWeights(raw: unknown): Record<string, number> {
   const m: Record<string, number> = {};
   for (const t of PENGALI_TYPES) m[t] = 1;
@@ -366,8 +367,8 @@ export const examService = {
       }
 
       let gained = 0;
-      if (type === "MCQ") {
-        // MCQ: jumlah bobot opsi terpilih (boleh parsial), tanpa pengali paket.
+      if (type === "POLY_CHOICE") {
+        // Pilihan Ganda Berbobot: jumlah bobot opsi terpilih (boleh parsial), tanpa pengali paket.
         for (const a of ans) gained += a.selectedOption ? Number(a.selectedOption.scoreWeight) : 0;
       } else {
         // TRUE_FALSE / POLY_CHOICE / MULTI_SELECT: skor tetap 1 × pengali paket.
