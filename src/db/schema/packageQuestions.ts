@@ -1,4 +1,4 @@
-import { integer, numeric, pgTable, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { integer, pgTable, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { examPackages } from "./examPackages";
 import { questions } from "./questions";
 
@@ -13,8 +13,6 @@ export const packageQuestions = pgTable(
       .notNull()
       .references(() => questions.id, { onDelete: "cascade" }),
     orderNumber: integer("order_number").notNull().default(0),
-    // Poin soal ini di dalam paket ini (bisa beda antar paket).
-    score: numeric("score", { precision: 10, scale: 2 }).notNull().default("1"),
   },
   (t) => [
     // satu soal hanya boleh masuk satu paket sekali
