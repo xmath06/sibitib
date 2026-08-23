@@ -39,9 +39,11 @@ export const questionsController = new Elysia({
           t.Literal("TRUE_FALSE"),
           t.Literal("POLY_CHOICE"),
           t.Literal("MULTI_SELECT"),
+          t.Literal("URAIAN_PENDEK"),
         ]),
         minWordCount: t.Optional(t.Number()),
         maxWordCount: t.Optional(t.Number()),
+        answerKey: t.Optional(t.String()),
         options: t.Optional(
           t.Array(
             t.Object({
@@ -68,10 +70,12 @@ export const questionsController = new Elysia({
             t.Literal("TRUE_FALSE"),
             t.Literal("POLY_CHOICE"),
             t.Literal("MULTI_SELECT"),
+            t.Literal("URAIAN_PENDEK"),
           ]),
         ),
         minWordCount: t.Optional(t.Nullable(t.Number())),
         maxWordCount: t.Optional(t.Nullable(t.Number())),
+        answerKey: t.Optional(t.String()),
         options: t.Optional(
           t.Array(
             t.Object({

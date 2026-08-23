@@ -171,7 +171,7 @@ export const gradingService = {
       const q = pq.question;
       children.push(questionParagraph(idx + 1, q.questionText));
 
-      if (q.questionType !== "ESSAY") {
+      if (q.questionType !== "ESSAY" && q.questionType !== "URAIAN_PENDEK") {
         q.options.forEach((o, oi) => {
           const letter = String.fromCharCode(65 + oi);
           const detail =
@@ -185,12 +185,15 @@ export const gradingService = {
 
       const ans = answersByQ.get(q.id) ?? [];
       const first = ans[0];
-      if (q.questionType === "ESSAY") {
+      if (q.questionType === "ESSAY" || q.questionType === "URAIAN_PENDEK") {
         children.push(paragraph(`   Jawaban siswa${first?.wordCount != null ? ` (${first.wordCount} kata)` : ""}:`));
         if (first?.essayAnswer) {
           children.push(...htmlToDocxBlocks(first.essayAnswer, 360));
         } else {
           children.push(paragraph("   (tidak dijawab)"));
+        }
+        if (q.answerKey) {
+          children.push(paragraph(`   Kunci jawaban: ${q.answerKey}`));
         }
       } else {
         const letters = ans

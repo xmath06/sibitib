@@ -1,4 +1,4 @@
-import { and, eq, count, or, isNull, gt, exists, sql, inArray, desc } from "drizzle-orm";
+import { and, eq, count, or, isNull, gt, lte, exists, sql, inArray, desc } from "drizzle-orm";
 import { db } from "@/db";
 import {
   examSchedules,
@@ -304,9 +304,13 @@ export const studentScheduleQueries = {
     const gradeLevel = student.class?.gradeLevel ?? null;
 
     // Kriteria 1: jadwal aktif & belum berakhir
+    // Terbuka jika sudah lewat startTime, ATAU guru membukanya manual (ON_GOING).
+    // Tanpa ini, jadwal SCHEDULED tidak pernah otomatis muncul di siswa
+    // (statusnya tetap SCHEDULED sampai guru klik mulai di monitor).
     const activeCondition = and(
       eq(examSchedules.isActive, true),
       or(isNull(examSchedules.endTime), gt(examSchedules.endTime, now)),
+      or(lte(examSchedules.startTime, now), eq(examSchedules.scheduleStatus, "ON_GOING")),
     );
 
     // Kriteria 2: agama

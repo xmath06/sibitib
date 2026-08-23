@@ -89,6 +89,16 @@ export const examService = {
     if (!schedule.isActive) throw badRequest("Schedule is not active");
     if (schedule.scheduleStatus === "ENDED")
       throw badRequest("Schedule has ended");
+    // Jadwal SCHEDULED baru bisa dimulai setelah waktunya tiba.
+    // (ON_GOING = guru membuka manual lebih awal, tetap diizinkan.)
+    const now = new Date();
+    if (
+      schedule.scheduleStatus === "SCHEDULED" &&
+      schedule.startTime &&
+      schedule.startTime > now
+    ) {
+      throw badRequest("Schedule has not started yet");
+    }
 
     if (schedule.accessCode) {
       if (!accessCode || accessCode !== schedule.accessCode) {
@@ -315,9 +325,10 @@ export const examService = {
     for (const a of answers) {
       const type = a.question.questionType;
 
-      if (type === "ESSAY") {
+      if (type === "ESSAY" || type === "URAIAN_PENDEK") {
         hasEssay = true;
         // Batas kata hanya informasi/warning — jangan blokir submit.
+        // URAIAN_PENDEK punya kunci jawaban (rujukan guru), dinilai manual.
         continue;
       }
 

@@ -15,6 +15,7 @@ export interface CreateQuestionInput {
   questionType: QuestionType;
   minWordCount?: number;
   maxWordCount?: number;
+  answerKey?: string;
   options?: QuestionOptionInput[];
 }
 
@@ -23,6 +24,7 @@ export interface UpdateQuestionInput {
   questionType?: QuestionType;
   minWordCount?: number | null;
   maxWordCount?: number | null;
+  answerKey?: string;
   options?: QuestionOptionInput[];
 }
 
@@ -57,6 +59,7 @@ export const questionService = {
         questionType: input.questionType,
         minWordCount: input.minWordCount ?? 0,
         maxWordCount: input.maxWordCount ?? null,
+        answerKey: input.answerKey ?? null,
       })
       .returning();
 
@@ -73,6 +76,7 @@ export const questionService = {
     if (input.questionType !== undefined) set.questionType = input.questionType;
     if (input.minWordCount !== undefined) set.minWordCount = input.minWordCount ?? 0;
     if (input.maxWordCount !== undefined) set.maxWordCount = input.maxWordCount;
+    if (input.answerKey !== undefined) set.answerKey = input.answerKey;
 
     const [question] = await db
       .update(questions)

@@ -8,12 +8,20 @@ export const questions = pgTable("questions", {
     .references(() => topics.id, { onDelete: "cascade" }),
   questionText: text("question_text").notNull(),
   questionType: text("question_type", {
-    enum: ["MCQ", "ESSAY", "TRUE_FALSE", "POLY_CHOICE", "MULTI_SELECT"],
+    enum: [
+      "MCQ",
+      "ESSAY",
+      "TRUE_FALSE",
+      "POLY_CHOICE",
+      "MULTI_SELECT",
+      "URAIAN_PENDEK",
+    ],
   })
     .notNull()
     .default("MCQ"),
   minWordCount: integer("min_word_count"),
   maxWordCount: integer("max_word_count"),
+  answerKey: text("answer_key"),
 });
 
 export type Question = typeof questions.$inferSelect;
@@ -25,5 +33,6 @@ export const QUESTION_TYPES = [
   "TRUE_FALSE",
   "POLY_CHOICE",
   "MULTI_SELECT",
+  "URAIAN_PENDEK",
 ] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
