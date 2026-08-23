@@ -11,6 +11,46 @@ import {
   slugify,
 } from "@/utils/docx";
 
+// Tipe soal selain MCQ: skornya tetap 1 × pengali paket (bukan bobot per-opsi).
+const NON_MCQ_TYPES = [
+  "ESSAY",
+  "URAIAN_PENDEK",
+  "TRUE_FALSE",
+  "POLY_CHOICE",
+  "MULTI_SELECT",
+] as const;
+
+function resolveTypeWeights(raw: unknown): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const t of NON_MCQ_TYPES) m[t] = 1;
+  if (raw && typeof raw === "object") {
+    for (const t of NON_MCQ_TYPES) {
+      const v = (raw as Record<string, unknown>)[t];
+      if (v != null && Number(v) > 0) m[t] = Number(v);
+    }
+  }
+  return m;
+}
+
+// Total nilai maksimal paket: non-MCQ = Σ(count × pengali); MCQ = Σ(max bobot opsi).
+function computeMaxScore(pkg: {
+  typeScoreWeight?: unknown;
+  packageQuestions?: { question: { questionType: string; options?: { scoreWeight?: string | number }[] } }[];
+}): number {
+  const tw = resolveTypeWeights(pkg.typeScoreWeight);
+  let max = 0;
+  for (const pq of pkg.packageQuestions ?? []) {
+    const t = pq.question.questionType;
+    if (t === "MCQ") {
+      const opts = pq.question.options ?? [];
+      max += opts.reduce((mx, o) => Math.max(mx, Number(o.scoreWeight ?? 0)), 0);
+    } else if ((NON_MCQ_TYPES as readonly string[]).includes(t)) {
+      max += tw[t] ?? 1;
+    }
+  }
+  return max;
+}
+
 export interface CreatePackageInput {
   subjectId: string;
   title: string;
@@ -51,7 +91,7 @@ export const packageService = {
         subject: true,
         packageQuestions: {
           columns: { id: true },
-          with: { question: { columns: { questionType: true } } },
+          with: { question: { columns: { questionType: true }, with: { options: { columns: { scoreWeight: true } } } } },
         },
       },
     });
@@ -67,7 +107,12 @@ export const packageService = {
           const t = pq.question.questionType;
           typeCounts[t] = (typeCounts[t] ?? 0) + 1;
         }
-        return { ...rest, questionCount: packageQuestions.length, questionTypeCounts: typeCounts };
+        return {
+          ...rest,
+          questionCount: packageQuestions.length,
+          questionTypeCounts: typeCounts,
+          maxScore: computeMaxScore({ typeScoreWeight: rest.typeScoreWeight, packageQuestions }),
+        };
       }),
       pagination: { page, limit, total: total[0]?.value ?? 0 },
     };
@@ -85,7 +130,7 @@ export const packageService = {
       },
     });
     if (!row) throw notFound("Exam package not found");
-    return row;
+    return { ...row, maxScore: computeMaxScore(row) };
   },
 
   async create(input: CreatePackageInput) {
