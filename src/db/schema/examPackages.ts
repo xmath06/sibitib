@@ -1,7 +1,6 @@
 import {
   boolean,
   integer,
-  jsonb,
   numeric,
   pgTable,
   text,
@@ -21,8 +20,6 @@ export const examPackages = pgTable("exam_packages", {
   totalQuestions: integer("total_questions").notNull().default(0),
   isRandomQuestions: boolean("is_random_questions").notNull().default(false),
   isRandomOptions: boolean("is_random_options").notNull().default(false),
-  // Bobot skor per tipe soal (pengali), kecuali MCQ yang berbobot per-opsi.
-  typeScoreWeight: jsonb("type_score_weight").notNull().default({}),
 });
 
 export type ExamPackage = typeof examPackages.$inferSelect;

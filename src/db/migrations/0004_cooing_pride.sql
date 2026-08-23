@@ -1,0 +1,1 @@
+ALTER TABLE "package_questions" ADD COLUMN "score" numeric(10, 2) DEFAULT '1' NOT NULL;

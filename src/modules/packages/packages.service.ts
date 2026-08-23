@@ -11,44 +11,27 @@ import {
   slugify,
 } from "@/utils/docx";
 
-// Tipe soal selain MCQ: skornya tetap 1 × pengali paket (bukan bobot per-opsi).
-const NON_MCQ_TYPES = [
-  "ESSAY",
-  "URAIAN_PENDEK",
-  "TRUE_FALSE",
-  "POLY_CHOICE",
-  "MULTI_SELECT",
-] as const;
-
-function resolveTypeWeights(raw: unknown): Record<string, number> {
-  const m: Record<string, number> = {};
-  for (const t of NON_MCQ_TYPES) m[t] = 1;
-  if (raw && typeof raw === "object") {
-    for (const t of NON_MCQ_TYPES) {
-      const v = (raw as Record<string, unknown>)[t];
-      if (v != null && Number(v) > 0) m[t] = Number(v);
-    }
-  }
-  return m;
+// Total nilai maksimal paket = Σ poin tiap soal di dalam paket.
+function computeMaxScore(pkg: { packageQuestions?: unknown } & Record<string, unknown>): number {
+  const pqs = (pkg.packageQuestions ?? []) as { score?: string | number }[];
+  let max = 0;
+  for (const pq of pqs) max += Number(pq.score ?? 1);
+  return max;
 }
 
-// Total nilai maksimal paket: non-MCQ = Σ(count × pengali); MCQ = Σ(max bobot opsi).
-function computeMaxScore(pkg: {
-  typeScoreWeight?: unknown;
-  packageQuestions?: { question: { questionType: string; options?: { scoreWeight?: string | number }[] } }[];
-}): number {
-  const tw = resolveTypeWeights(pkg.typeScoreWeight);
-  let max = 0;
-  for (const pq of pkg.packageQuestions ?? []) {
-    const t = pq.question.questionType;
-    if (t === "MCQ") {
-      const opts = pq.question.options ?? [];
-      max += opts.reduce((mx, o) => Math.max(mx, Number(o.scoreWeight ?? 0)), 0);
-    } else if ((NON_MCQ_TYPES as readonly string[]).includes(t)) {
-      max += tw[t] ?? 1;
-    }
-  }
-  return max;
+export interface PackageQuestionInput {
+  questionId: string;
+  score?: number;
+}
+
+// Soal paket bisa diberikan via `questions` (dgn poin) atau `questionIds` (fallback poin=1).
+function toQuestionInputs(input: {
+  questions?: PackageQuestionInput[];
+  questionIds?: string[];
+}): PackageQuestionInput[] {
+  if (input.questions && input.questions.length) return input.questions;
+  if (input.questionIds) return input.questionIds.map((qid) => ({ questionId: qid, score: 1 }));
+  return [];
 }
 
 export interface CreatePackageInput {
@@ -59,8 +42,8 @@ export interface CreatePackageInput {
   passScore?: string | number;
   isRandomQuestions?: boolean;
   isRandomOptions?: boolean;
+  questions?: PackageQuestionInput[];
   questionIds?: string[];
-  typeScoreWeight?: Record<string, number>;
 }
 
 export interface UpdatePackageInput {
@@ -71,8 +54,8 @@ export interface UpdatePackageInput {
   passScore?: string | number;
   isRandomQuestions?: boolean;
   isRandomOptions?: boolean;
+  questions?: PackageQuestionInput[];
   questionIds?: string[];
-  typeScoreWeight?: Record<string, number>;
 }
 
 export const packageService = {
@@ -90,8 +73,8 @@ export const packageService = {
       with: {
         subject: true,
         packageQuestions: {
-          columns: { id: true },
-          with: { question: { columns: { questionType: true }, with: { options: { columns: { scoreWeight: true } } } } },
+          columns: { id: true, score: true },
+          with: { question: { columns: { questionType: true } } },
         },
       },
     });
@@ -111,7 +94,7 @@ export const packageService = {
           ...rest,
           questionCount: packageQuestions.length,
           questionTypeCounts: typeCounts,
-          maxScore: computeMaxScore({ typeScoreWeight: rest.typeScoreWeight, packageQuestions }),
+          maxScore: computeMaxScore({ packageQuestions }),
         };
       }),
       pagination: { page, limit, total: total[0]?.value ?? 0 },
@@ -124,6 +107,7 @@ export const packageService = {
       with: {
         subject: true,
         packageQuestions: {
+          columns: { score: true },
           orderBy: (t, { asc }) => [asc(t.orderNumber)],
           with: { question: { with: { options: true, topic: true } } },
         },
@@ -134,7 +118,8 @@ export const packageService = {
   },
 
   async create(input: CreatePackageInput) {
-    const qty = input.questionIds?.length ?? 0;
+    const qInputs = toQuestionInputs(input);
+    const qty = qInputs.length;
 
     const [pkg] = await db
       .insert(examPackages)
@@ -147,11 +132,10 @@ export const packageService = {
         totalQuestions: qty,
         isRandomQuestions: input.isRandomQuestions ?? false,
         isRandomOptions: input.isRandomOptions ?? false,
-        typeScoreWeight: input.typeScoreWeight ?? {},
       })
       .returning();
 
-    await this._syncQuestions(pkg!.id, input.questionIds ?? []);
+    await this._syncQuestions(pkg!.id, qInputs);
     return this.getById(pkg!.id);
   },
 
@@ -169,8 +153,6 @@ export const packageService = {
     if (input.passScore !== undefined) set.passScore = String(input.passScore);
     if (input.isRandomQuestions !== undefined) set.isRandomQuestions = input.isRandomQuestions;
     if (input.isRandomOptions !== undefined) set.isRandomOptions = input.isRandomOptions;
-    if (input.typeScoreWeight !== undefined) set.typeScoreWeight = input.typeScoreWeight;
-    if (input.questionIds !== undefined) set.totalQuestions = input.questionIds.length;
 
     const [pkg] = await db
       .update(examPackages)
@@ -178,8 +160,10 @@ export const packageService = {
       .where(eq(examPackages.id, id))
       .returning();
 
-    if (input.questionIds) {
-      await this._syncQuestions(id, input.questionIds);
+    if (input.questions !== undefined || input.questionIds !== undefined) {
+      const qInputs = toQuestionInputs(input);
+      await db.update(examPackages).set({ totalQuestions: qInputs.length }).where(eq(examPackages.id, id));
+      await this._syncQuestions(id, qInputs);
     }
 
     return this.getById(pkg!.id);
@@ -213,6 +197,7 @@ export const packageService = {
     pkg.packageQuestions.forEach((pq, idx) => {
       const q = pq.question;
       children.push(questionParagraph(idx + 1, q.questionText));
+      children.push(paragraph(`   Poin: ${Number(pq.score ?? 1)}`));
 
       if (q.questionType === "ESSAY") {
         children.push(paragraph("   Jawaban:"));
@@ -248,18 +233,17 @@ export const packageService = {
     return { buffer, filename: `paket-${slugify(pkg.title)}.docx` };
   },
 
-  // Replace seluruh daftar soal paket (delete + insert) dgn orderNumber berurutan.
-  async _syncQuestions(packageId: string, questionIds: string[]) {
+  // Replace seluruh daftar soal paket (delete + insert) dgn orderNumber + poin.
+  async _syncQuestions(packageId: string, questions: PackageQuestionInput[]) {
     await db.delete(packageQuestions).where(eq(packageQuestions.packageId, packageId));
-    if (!questionIds.length) return;
-    await db
-      .insert(packageQuestions)
-      .values(
-        questionIds.map((qid, idx) => ({
-          packageId,
-          questionId: qid,
-          orderNumber: idx + 1,
-        })),
-      );
+    if (!questions.length) return;
+    await db.insert(packageQuestions).values(
+      questions.map((q, idx) => ({
+        packageId,
+        questionId: q.questionId,
+        orderNumber: idx + 1,
+        score: q.score != null ? String(q.score) : "1",
+      })),
+    );
   },
 };

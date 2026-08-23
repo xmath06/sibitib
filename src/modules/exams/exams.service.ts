@@ -12,29 +12,6 @@ import { shuffle } from "@/utils/misc";
 import { badRequest, notFound, forbidden } from "@/middleware/errors";
 import { studentScheduleQueries } from "@/modules/schedules/schedules.service";
 
-// Tipe soal selain MCQ: skornya tetap 1 × pengali paket (bukan bobot per-opsi).
-const NON_MCQ_TYPES = [
-  "ESSAY",
-  "URAIAN_PENDEK",
-  "TRUE_FALSE",
-  "POLY_CHOICE",
-  "MULTI_SELECT",
-] as const;
-
-// Bobot pengali per tipe dari paket; default 1 untuk tiap tipe non-MCQ.
-// MCQ TIDAK masuk sini (skor murni dari score_weight opsi).
-function resolveTypeWeights(raw: unknown): Record<string, number> {
-  const m: Record<string, number> = {};
-  for (const t of NON_MCQ_TYPES) m[t] = 1;
-  if (raw && typeof raw === "object") {
-    for (const t of NON_MCQ_TYPES) {
-      const v = (raw as Record<string, unknown>)[t];
-      if (v != null && Number(v) > 0) m[t] = Number(v);
-    }
-  }
-  return m;
-}
-
 export interface SaveAnswerInput {
   questionId: string;
   selectedOptionId?: string;
@@ -53,7 +30,7 @@ async function getOwnedStudentExam(studentExamId: string, studentId: string) {
       eq(studentExams.studentId, studentId),
     ),
     with: {
-      schedule: { with: { package: true } },
+      schedule: { with: { package: { with: { packageQuestions: true } } } },
     },
   });
   if (!se) throw notFound("Student exam not found");
@@ -340,7 +317,9 @@ export const examService = {
     });
 
     const pkg = se.schedule.package;
-    const typeWeights = resolveTypeWeights(pkg?.typeScoreWeight);
+    // Poin tiap soal di paket ini (bisa beda antar paket).
+    const scoreOf = new Map<string, number>();
+    for (const pq of pkg?.packageQuestions ?? []) scoreOf.set(pq.questionId, Number(pq.score ?? 1));
 
     // Kelompokkan jawaban per soal (MULTI_SELECT punya banyak baris).
     const byQuestion = new Map<string, (typeof answers)[number][]>();
@@ -357,20 +336,23 @@ export const examService = {
     for (const [qid, ans] of byQuestion) {
       const q = ans[0]!.question;
       const type = q.questionType;
+      const questionScore = scoreOf.get(qid) ?? 1;
 
       if (type === "ESSAY" || type === "URAIAN_PENDEK") {
         hasEssay = true;
         // Batas kata hanya informasi/warning — jangan blokir submit.
-        // URAIAN_PENDEK punya kunci jawaban (rujukan guru), dinilai manual.
+        // URAIAN_PENDEK punya kunci jawaban (rujukan guru), dinilai manual (maks = questionScore).
         continue;
       }
 
       let gained = 0;
       if (type === "MCQ") {
-        // MCQ: jumlah bobot opsi terpilih (boleh parsial), tanpa pengali paket.
+        // MCQ: poin soal × jumlah bobot opsi terpilih (boleh parsial).
+        // score_weight opsi adalah pecahan (0..1) dari poin soal di paket.
         for (const a of ans) gained += a.selectedOption ? Number(a.selectedOption.scoreWeight) : 0;
+        gained *= questionScore;
       } else {
-        // TRUE_FALSE / POLY_CHOICE / MULTI_SELECT: skor tetap 1 × pengali paket.
+        // TRUE_FALSE / POLY_CHOICE / MULTI_SELECT: benar -> poin soal, salah -> 0.
         const correctSet = (q.options ?? [])
           .filter((o) => Number(o.scoreWeight ?? 0) > 0)
           .map((o) => o.id);
@@ -381,7 +363,7 @@ export const examService = {
           selSet.length > 0 &&
           selSet.length === correctSet.length &&
           selSet.every((id) => correctSet.includes(id));
-        gained = correct ? typeWeights[type] ?? 1 : 0;
+        gained = correct ? questionScore : 0;
       }
 
       // Simpan: baris pertama menampung skor penuh, sisanya 0 (agar total = gained).
