@@ -20,6 +20,7 @@ export interface CreatePackageInput {
   isRandomQuestions?: boolean;
   isRandomOptions?: boolean;
   questionIds?: string[];
+  typeScoreWeight?: Record<string, number>;
 }
 
 export interface UpdatePackageInput {
@@ -31,6 +32,7 @@ export interface UpdatePackageInput {
   isRandomQuestions?: boolean;
   isRandomOptions?: boolean;
   questionIds?: string[];
+  typeScoreWeight?: Record<string, number>;
 }
 
 export const packageService = {
@@ -100,6 +102,7 @@ export const packageService = {
         totalQuestions: qty,
         isRandomQuestions: input.isRandomQuestions ?? false,
         isRandomOptions: input.isRandomOptions ?? false,
+        typeScoreWeight: input.typeScoreWeight ?? {},
       })
       .returning();
 
@@ -121,6 +124,7 @@ export const packageService = {
     if (input.passScore !== undefined) set.passScore = String(input.passScore);
     if (input.isRandomQuestions !== undefined) set.isRandomQuestions = input.isRandomQuestions;
     if (input.isRandomOptions !== undefined) set.isRandomOptions = input.isRandomOptions;
+    if (input.typeScoreWeight !== undefined) set.typeScoreWeight = input.typeScoreWeight;
     if (input.questionIds !== undefined) set.totalQuestions = input.questionIds.length;
 
     const [pkg] = await db

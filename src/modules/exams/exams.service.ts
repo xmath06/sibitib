@@ -12,6 +12,29 @@ import { shuffle } from "@/utils/misc";
 import { badRequest, notFound, forbidden } from "@/middleware/errors";
 import { studentScheduleQueries } from "@/modules/schedules/schedules.service";
 
+// Tipe soal selain MCQ: skornya tetap 1 × pengali paket (bukan bobot per-opsi).
+const NON_MCQ_TYPES = [
+  "ESSAY",
+  "URAIAN_PENDEK",
+  "TRUE_FALSE",
+  "POLY_CHOICE",
+  "MULTI_SELECT",
+] as const;
+
+// Bobot pengali per tipe dari paket; default 1 untuk tiap tipe non-MCQ.
+// MCQ TIDAK masuk sini (skor murni dari score_weight opsi).
+function resolveTypeWeights(raw: unknown): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const t of NON_MCQ_TYPES) m[t] = 1;
+  if (raw && typeof raw === "object") {
+    for (const t of NON_MCQ_TYPES) {
+      const v = (raw as Record<string, unknown>)[t];
+      if (v != null && Number(v) > 0) m[t] = Number(v);
+    }
+  }
+  return m;
+}
+
 export interface SaveAnswerInput {
   questionId: string;
   selectedOptionId?: string;
@@ -311,19 +334,29 @@ export const examService = {
     const answers = await db.query.studentAnswers.findMany({
       where: eq(studentAnswers.studentExamId, studentExamId),
       with: {
-        question: true,
+        question: { with: { options: true } },
         selectedOption: true,
       },
     });
 
     const pkg = se.schedule.package;
+    const typeWeights = resolveTypeWeights(pkg?.typeScoreWeight);
+
+    // Kelompokkan jawaban per soal (MULTI_SELECT punya banyak baris).
+    const byQuestion = new Map<string, (typeof answers)[number][]>();
+    for (const a of answers) {
+      const arr = byQuestion.get(a.questionId) ?? [];
+      arr.push(a);
+      byQuestion.set(a.questionId, arr);
+    }
 
     // Hitung otomatis untuk tipe pilihan
     let totalScore = 0;
     let hasEssay = false;
 
-    for (const a of answers) {
-      const type = a.question.questionType;
+    for (const [qid, ans] of byQuestion) {
+      const q = ans[0]!.question;
+      const type = q.questionType;
 
       if (type === "ESSAY" || type === "URAIAN_PENDEK") {
         hasEssay = true;
@@ -332,13 +365,33 @@ export const examService = {
         continue;
       }
 
-      // Auto-grading: bobot opsi terpilih
-      const weight = a.selectedOption ? Number(a.selectedOption.scoreWeight) : 0;
-      totalScore += weight;
-      await db
-        .update(studentAnswers)
-        .set({ score: String(weight) })
-        .where(eq(studentAnswers.id, a.id));
+      let gained = 0;
+      if (type === "MCQ") {
+        // MCQ: jumlah bobot opsi terpilih (boleh parsial), tanpa pengali paket.
+        for (const a of ans) gained += a.selectedOption ? Number(a.selectedOption.scoreWeight) : 0;
+      } else {
+        // TRUE_FALSE / POLY_CHOICE / MULTI_SELECT: skor tetap 1 × pengali paket.
+        const correctSet = (q.options ?? [])
+          .filter((o) => Number(o.scoreWeight ?? 0) > 0)
+          .map((o) => o.id);
+        const selSet = ans
+          .map((a) => a.selectedOptionId)
+          .filter((x): x is string => Boolean(x));
+        const correct =
+          selSet.length > 0 &&
+          selSet.length === correctSet.length &&
+          selSet.every((id) => correctSet.includes(id));
+        gained = correct ? typeWeights[type] ?? 1 : 0;
+      }
+
+      // Simpan: baris pertama menampung skor penuh, sisanya 0 (agar total = gained).
+      for (let i = 0; i < ans.length; i++) {
+        await db
+          .update(studentAnswers)
+          .set({ score: String(i === 0 ? gained : 0) })
+          .where(eq(studentAnswers.id, ans[i]!.id));
+      }
+      totalScore += gained;
     }
 
     const finalStatus = hasEssay ? "WAITING_GRADING" : "COMPLETED";

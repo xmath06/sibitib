@@ -1,0 +1,1 @@
+ALTER TABLE "exam_packages" ADD COLUMN "type_score_weight" jsonb DEFAULT '{}'::jsonb NOT NULL;
