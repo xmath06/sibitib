@@ -174,6 +174,7 @@ export const topicService = {
       where: and(eq(topics.subjectId, subjectId)),
       orderBy: (t, { asc }) => [asc(t.name)],
       with: {
+        subject: { columns: { id: true, code: true, name: true } },
         questions: {
           columns: { id: true, createdByUserId: true, isShared: true },
         },
@@ -181,19 +182,61 @@ export const topicService = {
       },
     });
 
-    return rows.map((t) => {
-      const ownCount = t.questions.filter(
-        (q) => authUser && q.createdByUserId === authUser.id,
-      ).length;
-      const sharedCount = t.questions.filter(
-        (q) => q.isShared && q.createdByUserId !== (authUser?.id ?? ""),
-      ).length;
-      return {
-        ...t,
-        ownQuestionCount: ownCount,
-        sharedQuestionCount: sharedCount,
-        isOwnedByMe: !!authUser && t.createdByUserId === authUser.id,
-      };
+    return rows.map((t) => this._shapeTopic(t, authUser));
+  },
+
+  // Topik lintas seluruh mapel yang diampu guru (atau semua mapel untuk ADMIN).
+  // Dipakai sebagai grid Bank Soal langsung (tanpa grid mata pelajaran di tengah).
+  async listForUser(authUser?: AuthUser) {
+    let subjectIds: string[] = [];
+    if (authUser?.role === "TEACHER") {
+      subjectIds = await subjectService.listTeacherSubjectIds(authUser.id);
+    } else if (authUser?.role === "ADMIN") {
+      const all = await db.query.subjects.findMany({ columns: { id: true } });
+      subjectIds = all.map((s) => s.id);
+    }
+    if (subjectIds.length === 0) return [];
+
+    const rows = await db.query.topics.findMany({
+      where: inArray(topics.subjectId, subjectIds),
+      orderBy: (t, { asc }) => [asc(t.name)],
+      with: {
+        subject: { columns: { id: true, code: true, name: true } },
+        questions: {
+          columns: { id: true, createdByUserId: true, isShared: true },
+        },
+        createdByUser: { columns: { id: true, name: true } },
+      },
     });
+
+    return rows.map((t) => this._shapeTopic(t, authUser));
+  },
+
+  _shapeTopic(
+    t: {
+      id: string;
+      name: string;
+      subjectId: string;
+      createdByUserId: string;
+      subject: { id: string; code: string; name: string };
+      createdByUser: { id: string; name: string } | null;
+      questions: { id: string; createdByUserId: string; isShared: boolean }[];
+    },
+    authUser?: AuthUser,
+  ) {
+    const ownCount = t.questions.filter(
+      (q) => authUser && q.createdByUserId === authUser.id,
+    ).length;
+    const sharedCount = t.questions.filter(
+      (q) => q.isShared && q.createdByUserId !== (authUser?.id ?? ""),
+    ).length;
+    return {
+      ...t,
+      subjectName: t.subject.name,
+      subjectCode: t.subject.code,
+      ownQuestionCount: ownCount,
+      sharedQuestionCount: sharedCount,
+      isOwnedByMe: !!authUser && t.createdByUserId === authUser.id,
+    };
   },
 };

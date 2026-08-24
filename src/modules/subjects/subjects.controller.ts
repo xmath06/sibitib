@@ -90,10 +90,16 @@ export const topicsController = new Elysia({
   .guard(requireRole("ADMIN", "TEACHER"))
   .get(
     "/",
-    async ({ query, authUser }) => topicService.listBySubject(query.subjectId, authUser),
+    async ({ query, authUser }) => {
+      if (query.subjectId) return topicService.listBySubject(query.subjectId, authUser);
+      return topicService.listForUser(authUser);
+    },
     {
-      query: t.Object({ subjectId: t.String() }),
-      detail: { summary: "List topics (grid) for a subject with question counts" },
+      query: t.Object({ subjectId: t.Optional(t.String()) }),
+      detail: {
+        summary:
+          "List topics grid. With subjectId → that subject; without → all topics across subjects the user teaches (admin: all)",
+      },
     },
   )
   .post(
