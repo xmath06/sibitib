@@ -156,6 +156,11 @@ Guard: `.use(authenticate())` untuk proteksi, `.guard(requireRole("ADMIN", "TEAC
 `GET /student/schedules/active` — jadwal aktif utk siswa, **filter presisi** (STUDENT)
 `GET /my/schedules` — alias legacy dari `/student/schedules/active`
 
+### Isolasi Guru & Kepemilikan (v2)
+- **Topik & Soal**: kolom `created_by_user_id` (NOT NULL) + `questions.is_shared`. Guru hanya melihat soal milik sendiri atau `is_shared=true` di mapel yang diampu (`teacher_subjects`).
+- **Paket & Jadwal**: kolom `created_by_user_id` (nullable). `NULL`/milik admin = **global, read-only** untuk guru; milik sendiri = bisa edit/hapus + kontrol monitor. Helper di `src/utils/ownership.ts` (`getAdminIds`, `isVisibleToTeacher`, `resolveOwnerId`).
+- **Import atas nama guru**: `POST /packages`, `POST /schedules`, `POST /questions` menerima `createdByUserId` **hanya dihormati bila caller ADMIN** (menjembatani guru). TEACHER mengabaikan field → otomatis milik diri sendiri.
+
 ### Targeting Jadwal (siapa yang melihat jadwal ini)
 Setiap jadwal punya `targetType` + `targetReligion` + baris `schedule_targets`:
 

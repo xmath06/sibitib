@@ -45,13 +45,22 @@ Helper: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `unpr
 | questions | id, topic_id, created_by_user_id (fk→users, NOT NULL), is_shared (bool, default false), question_text, question_type `MCQ\|ESSAY\|TRUE_FALSE\|POLY_CHOICE\|MULTI_SELECT\|URAIAN_PENDEK`, min_word_count, max_word_count, answer_key |
 | options | id, question_id, option_text, score_weight (numeric) |
 | teacher_subjects | id, user_id (fk→users, cascade), subject_id (fk→subjects, cascade), created_at; unique(user_id, subject_id) |
-| exam_packages | id, subject_id, title, has_timer (default true), duration_minutes, pass_score (numeric), total_questions, is_random_questions, is_random_options |
+| exam_packages | id, subject_id, title, has_timer (default true), duration_minutes, pass_score (numeric), total_questions, is_random_questions, is_random_options, **created_by_user_id** (fk→users, set null) |
 | package_questions | package_id, question_id, order_number |
-| exam_schedules | id, package_id, title, start_time, end_time, category, access_code, show_result_immediately, schedule_status `DRAFT\|ON_GOING\|PAUSED\|FINISHED`, is_active, target_type `ALL_STUDENTS\|BY_CLASS\|BY_GRADE\|SPECIFIC_STUDENTS`, target_religion (enum nullable), time_extension_minutes (int, default 0) |
+| exam_schedules | id, package_id, title, start_time, end_time, category, access_code, show_result_immediately, schedule_status `DRAFT\|ON_GOING\|PAUSED\|FINISHED`, is_active, target_type `ALL_STUDENTS\|BY_CLASS\|BY_GRADE\|SPECIFIC_STUDENTS`, target_religion (enum nullable), time_extension_minutes (int, default 0), **created_by_user_id** (fk→users, set null) |
 | schedule_allocations | id, schedule_id, student_id |
 | schedule_targets | schedule_id, target_class_id, target_grade_level, target_student_id |
 | student_exams | id, allocation_id, student_id, schedule_id, attempt_number, started_at, submitted_at, total_score (numeric), status `NOT_STARTED\|IN_PROGRESS\|WAITING_GRADING\|COMPLETED` |
 | student_answers | id, student_exam_id, question_id, selected_option_id, essay_answer, word_count, score (numeric), teacher_feedback, is_flagged, updated_at; unique(student_exam_id, question_id, selected_option_id) → MULTI_SELECT boleh banyak baris |
+
+## Isolasi & Kepemilikan (v2)
+
+`src/utils/ownership.ts` menyediakan helper bersama:
+- `getAdminIds()` — id semua user `role=ADMIN` (paket/jadwal buatan admin = global, guru boleh lihat read-only).
+- `isVisibleToTeacher(createdByUserId, teacherId, adminIds)` — true bila guru boleh melihat paket/jadwal (milik sendiri, buatan admin, atau NULL/legacy).
+- `resolveOwnerId(input, authUser)` — tentukan `created_by_user_id` saat create: TEACHER selalu = dirinya; ADMIN = `input.createdByUserId` bila diisi (import atas nama guru) atau dirinya.
+
+Topik & soal: `created_by_user_id` NOT NULL; `questions.is_shared` memungkinkan guru lain (semapel) melihat/memakai. Paket & jadwal: `created_by_user_id` nullable (NULL = buatan admin/legacy).
 
 ## Timer (server-synced)
 
