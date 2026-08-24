@@ -1,11 +1,16 @@
-import { integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { topics } from "./topics";
+import { users } from "./users";
 
 export const questions = pgTable("questions", {
   id: uuid("id").defaultRandom().primaryKey(),
   topicId: uuid("topic_id")
     .notNull()
     .references(() => topics.id, { onDelete: "cascade" }),
+  createdByUserId: uuid("created_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  isShared: boolean("is_shared").notNull().default(false),
   questionText: text("question_text").notNull(),
   questionType: text("question_type", {
     enum: [

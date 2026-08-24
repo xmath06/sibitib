@@ -5,7 +5,7 @@
  * Jalankan: bun run db:seed-contoh
  */
 import { db } from "@/db";
-import { subjects, topics, questions, options } from "@/db/schema";
+import { subjects, topics, questions, options, users } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import {
   GEO_SQUARE,
@@ -27,6 +27,9 @@ async function main() {
   }
   const mtkId = mtk.id;
 
+  const [author] = await db.select().from(users).limit(1);
+  const authorId = author!.id;
+
   async function getTopic(name: string) {
     const [t] = await db
       .select()
@@ -34,14 +37,17 @@ async function main() {
       .where(and(eq(topics.subjectId, mtkId), eq(topics.name, name)))
       .limit(1);
     if (t) return t;
-    const [created] = await db.insert(topics).values({ subjectId: mtkId, name }).returning();
+    const [created] = await db
+      .insert(topics)
+      .values({ subjectId: mtkId, name, createdByUserId: authorId })
+      .returning();
     return created;
   }
 
   async function addQuestion(topicId: string, questionText: string, type: string, opts: { t: string; w: string }[]) {
     const [q] = await db
       .insert(questions)
-      .values({ topicId, questionText, questionType: type as any })
+      .values({ topicId, questionText, questionType: type as any, createdByUserId: authorId })
       .returning();
     if (q) await db.insert(options).values(opts.map((o) => ({ questionId: q.id, optionText: o.t, scoreWeight: o.w })));
     return q;

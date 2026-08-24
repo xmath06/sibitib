@@ -1,8 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { db } from "@/db";
 import { questions, options, topics } from "@/db/schema";
 import type { QuestionType } from "@/db/schema/questions";
-import { notFound } from "@/middleware/errors";
+import type { AuthUser } from "@/middleware/auth";
+import { forbidden, notFound } from "@/middleware/errors";
+import { subjectService } from "./subjects.service";
 
 export interface QuestionOptionInput {
   optionText: string;
@@ -16,6 +18,7 @@ export interface CreateQuestionInput {
   minWordCount?: number;
   maxWordCount?: number;
   answerKey?: string;
+  isShared?: boolean;
   options?: QuestionOptionInput[];
 }
 
@@ -25,36 +28,92 @@ export interface UpdateQuestionInput {
   minWordCount?: number | null;
   maxWordCount?: number | null;
   answerKey?: string;
+  isShared?: boolean;
   options?: QuestionOptionInput[];
 }
 
 export const questionService = {
-  async listByTopic(topicId: string) {
-    const topic = await db.query.topics.findFirst({ where: eq(topics.id, topicId) });
+  async listByTopic(topicId: string, authUser?: AuthUser) {
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.id, topicId),
+      with: { subject: true },
+    });
     if (!topic) throw notFound("Topic not found");
+
+    // Guru hanya boleh melihat topik di mapel yang diampunya.
+    if (authUser?.role === "TEACHER") {
+      const teaches = await subjectService.teacherTeachesSubject(
+        authUser.id,
+        topic.subjectId,
+      );
+      if (!teaches) throw forbidden("Anda tidak mengampu mata pelajaran ini");
+    }
+
+    // ADMIN: semua soal. TEACHER: milik sendiri ATAU yang di-share guru lain.
+    const where =
+      authUser?.role === "TEACHER"
+        ? and(
+            eq(questions.topicId, topicId),
+            or(
+              eq(questions.createdByUserId, authUser.id),
+              eq(questions.isShared, true),
+            ),
+          )
+        : eq(questions.topicId, topicId);
+
     return db.query.questions.findMany({
-      where: eq(questions.topicId, topicId),
-      with: { options: true },
+      where,
+      with: {
+        options: true,
+        createdByUser: { columns: { id: true, name: true } },
+      },
     });
   },
 
-  async getById(id: string) {
+  async getById(id: string, authUser?: AuthUser) {
     const row = await db.query.questions.findFirst({
       where: eq(questions.id, id),
-      with: { options: true, topic: { with: { subject: true } } },
+      with: {
+        options: true,
+        topic: { with: { subject: true } },
+        createdByUser: { columns: { id: true, name: true } },
+      },
     });
     if (!row) throw notFound("Question not found");
+
+    if (authUser?.role === "TEACHER") {
+      const teaches = await subjectService.teacherTeachesSubject(
+        authUser.id,
+        row.topic.subjectId,
+      );
+      if (!teaches) throw notFound("Question not found");
+      const isOwner = row.createdByUserId === authUser.id;
+      if (!isOwner && !row.isShared) throw notFound("Question not found");
+    }
     return row;
   },
 
-  async create(input: CreateQuestionInput) {
-    const topic = await db.query.topics.findFirst({ where: eq(topics.id, input.topicId) });
+  async create(input: CreateQuestionInput, authUser?: AuthUser) {
+    const topic = await db.query.topics.findFirst({
+      where: eq(topics.id, input.topicId),
+      with: { subject: true },
+    });
     if (!topic) throw notFound("Topic not found");
+
+    if (authUser?.role === "TEACHER") {
+      const teaches = await subjectService.teacherTeachesSubject(
+        authUser.id,
+        topic.subjectId,
+      );
+      if (!teaches) throw forbidden("Anda tidak mengampu mata pelajaran ini");
+    }
 
     const [question] = await db
       .insert(questions)
       .values({
         topicId: input.topicId,
+        createdByUserId: authUser!.id,
+        isShared: input.isShared ?? false,
         questionText: input.questionText,
         questionType: input.questionType,
         minWordCount: input.minWordCount ?? 0,
@@ -67,9 +126,16 @@ export const questionService = {
     return { ...question!, options: optionRows };
   },
 
-  async update(id: string, input: UpdateQuestionInput) {
-    const existing = await db.query.questions.findFirst({ where: eq(questions.id, id) });
+  async update(id: string, input: UpdateQuestionInput, authUser?: AuthUser) {
+    const existing = await db.query.questions.findFirst({
+      where: eq(questions.id, id),
+      with: { topic: { with: { subject: true } } },
+    });
     if (!existing) throw notFound("Question not found");
+
+    if (authUser?.role === "TEACHER" && existing.createdByUserId !== authUser.id) {
+      throw forbidden("Anda hanya dapat mengubah soal buatan sendiri");
+    }
 
     const set: Record<string, unknown> = {};
     if (input.questionText !== undefined) set.questionText = input.questionText;
@@ -77,6 +143,7 @@ export const questionService = {
     if (input.minWordCount !== undefined) set.minWordCount = input.minWordCount ?? 0;
     if (input.maxWordCount !== undefined) set.maxWordCount = input.maxWordCount;
     if (input.answerKey !== undefined) set.answerKey = input.answerKey;
+    if (input.isShared !== undefined) set.isShared = input.isShared;
 
     const [question] = await db
       .update(questions)
@@ -98,9 +165,13 @@ export const questionService = {
     return { ...question!, options: optionRows };
   },
 
-  async remove(id: string) {
+  async remove(id: string, authUser?: AuthUser) {
     const existing = await db.query.questions.findFirst({ where: eq(questions.id, id) });
     if (!existing) throw notFound("Question not found");
+
+    if (authUser?.role === "TEACHER" && existing.createdByUserId !== authUser.id) {
+      throw forbidden("Anda hanya dapat menghapus soal buatan sendiri");
+    }
     await db.delete(questions).where(eq(questions.id, id));
     return { success: true };
   },

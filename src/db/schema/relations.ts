@@ -10,6 +10,7 @@ import { scheduleTargets } from "./scheduleTargets";
 import { studentAnswers } from "./studentAnswers";
 import { studentExams } from "./studentExams";
 import { subjects } from "./subjects";
+import { teacherSubjects } from "./teacherSubjects";
 import { topics } from "./topics";
 import { users } from "./users";
 
@@ -21,6 +22,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   allocations: many(scheduleAllocations),
   studentExams: many(studentExams),
   scheduleTargets: many(scheduleTargets),
+  teacherSubjects: many(teacherSubjects),
 }));
 
 export const classesRelations = relations(classes, ({ many }) => ({
@@ -38,6 +40,10 @@ export const topicsRelations = relations(topics, ({ one, many }) => ({
     fields: [topics.subjectId],
     references: [subjects.id],
   }),
+  createdByUser: one(users, {
+    fields: [topics.createdByUserId],
+    references: [users.id],
+  }),
   questions: many(questions),
 }));
 
@@ -45,6 +51,10 @@ export const questionsRelations = relations(questions, ({ one, many }) => ({
   topic: one(topics, {
     fields: [questions.topicId],
     references: [topics.id],
+  }),
+  createdByUser: one(users, {
+    fields: [questions.createdByUserId],
+    references: [users.id],
   }),
   options: many(options),
   answers: many(studentAnswers),
@@ -159,3 +169,14 @@ export const studentAnswersRelations = relations(
     }),
   }),
 );
+
+export const teacherSubjectsRelations = relations(teacherSubjects, ({ one }) => ({
+  user: one(users, {
+    fields: [teacherSubjects.userId],
+    references: [users.id],
+  }),
+  subject: one(subjects, {
+    fields: [teacherSubjects.subjectId],
+    references: [subjects.id],
+  }),
+}));

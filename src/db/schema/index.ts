@@ -12,6 +12,7 @@ import { scheduleAllocations } from "./scheduleAllocations";
 import { scheduleTargets } from "./scheduleTargets";
 import { studentExams } from "./studentExams";
 import { studentAnswers } from "./studentAnswers";
+import { teacherSubjects } from "./teacherSubjects";
 
 export {
   users,
@@ -27,6 +28,7 @@ export {
   scheduleTargets,
   studentExams,
   studentAnswers,
+  teacherSubjects,
 };
 
 export * from "./users";
@@ -42,6 +44,7 @@ export * from "./scheduleAllocations";
 export * from "./scheduleTargets";
 export * from "./studentExams";
 export * from "./studentAnswers";
+export * from "./teacherSubjects";
 export * from "./relations";
 
 export const schema = {
@@ -58,5 +61,6 @@ export const schema = {
   scheduleTargets,
   studentExams,
   studentAnswers,
+  teacherSubjects,
   ...relations,
 };

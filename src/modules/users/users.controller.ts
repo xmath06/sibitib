@@ -79,4 +79,22 @@ export const usersController = new Elysia({
       params: t.Object({ id: t.String() }),
       detail: { summary: "Delete user (admin only)" },
     },
+  )
+
+  .get(
+    "/:id/subjects",
+    async ({ params }) => userService.getSubjects(params.id),
+    {
+      params: t.Object({ id: t.String() }),
+      detail: { summary: "List subjects taught by a user (admin only)" },
+    },
+  )
+  .put(
+    "/:id/subjects",
+    async ({ params, body }) => userService.setSubjects(params.id, body.subjectIds),
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({ subjectIds: t.Array(t.String()) }),
+      detail: { summary: "Replace subjects taught by a user (admin only)" },
+    },
   );

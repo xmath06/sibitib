@@ -21,15 +21,20 @@ export const subjectsController = new Elysia({
 
   .get(
     "/",
-    async ({ query }) =>
-      subjectService.list({ search: query.search, page: query.page, limit: query.limit }),
+    async ({ query, authUser }) =>
+      subjectService.list({
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+        authUser,
+      }),
     {
       query: t.Object({
         search: t.Optional(t.String()),
         page: t.Optional(t.Number()),
         limit: t.Optional(t.Number()),
       }),
-      detail: { summary: "List subjects" },
+      detail: { summary: "List subjects (teacher: only assigned subjects)" },
     },
   )
 
@@ -83,20 +88,28 @@ export const topicsController = new Elysia({
 })
   .use(authenticate())
   .guard(requireRole("ADMIN", "TEACHER"))
+  .get(
+    "/",
+    async ({ query, authUser }) => topicService.listBySubject(query.subjectId, authUser),
+    {
+      query: t.Object({ subjectId: t.String() }),
+      detail: { summary: "List topics (grid) for a subject with question counts" },
+    },
+  )
   .post(
     "/",
-    async ({ body }) => topicService.create(body.subjectId, body.name),
+    async ({ body, authUser }) => topicService.create(body.subjectId, body.name, authUser),
     {
       body: t.Object({
         subjectId: t.String(),
         name: t.String({ minLength: 1 }),
       }),
-      detail: { summary: "Create topic" },
+      detail: { summary: "Create topic (must teach the subject)" },
     },
   )
   .put(
     "/:id",
-    async ({ params, body }) => topicService.update(params.id, body.name),
+    async ({ params, body, authUser }) => topicService.update(params.id, body.name, authUser),
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({ name: t.String({ minLength: 1 }) }),
@@ -105,7 +118,7 @@ export const topicsController = new Elysia({
   )
   .delete(
     "/:id",
-    async ({ params }) => topicService.remove(params.id),
+    async ({ params, authUser }) => topicService.remove(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Delete topic" },

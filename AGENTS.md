@@ -41,9 +41,10 @@ Helper: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `unpr
 | classes | id, grade_level (int), name |
 | users | id, name, username (unique), password_hash, role `ADMIN\|TEACHER\|STUDENT`, class_id (fk→classes, set null), religion `ISLAM\|KRISTEN\|KATOLIK\|HINDU\|BUDDHA\|KONGHUCU\|OTHER\|null` |
 | subjects | id, code (unique), name |
-| topics | id, subject_id, name |
-| questions | id, topic_id, question_text, question_type `MCQ\|ESSAY\|TRUE_FALSE\|POLY_CHOICE\|MULTI_SELECT`, min_word_count, max_word_count |
+| topics | id, subject_id, name, created_by_user_id (fk→users, NOT NULL) |
+| questions | id, topic_id, created_by_user_id (fk→users, NOT NULL), is_shared (bool, default false), question_text, question_type `MCQ\|ESSAY\|TRUE_FALSE\|POLY_CHOICE\|MULTI_SELECT\|URAIAN_PENDEK`, min_word_count, max_word_count, answer_key |
 | options | id, question_id, option_text, score_weight (numeric) |
+| teacher_subjects | id, user_id (fk→users, cascade), subject_id (fk→subjects, cascade), created_at; unique(user_id, subject_id) |
 | exam_packages | id, subject_id, title, has_timer (default true), duration_minutes, pass_score (numeric), total_questions, is_random_questions, is_random_options |
 | package_questions | package_id, question_id, order_number |
 | exam_schedules | id, package_id, title, start_time, end_time, category, access_code, show_result_immediately, schedule_status `DRAFT\|ON_GOING\|PAUSED\|FINISHED`, is_active, target_type `ALL_STUDENTS\|BY_CLASS\|BY_GRADE\|SPECIFIC_STUDENTS`, target_religion (enum nullable), time_extension_minutes (int, default 0) |

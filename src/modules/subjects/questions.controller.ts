@@ -10,15 +10,15 @@ export const questionsController = new Elysia({
 
   .get(
     "/",
-    async ({ query }) => questionService.listByTopic(query.topicId),
+    async ({ query, authUser }) => questionService.listByTopic(query.topicId, authUser),
     {
       query: t.Object({ topicId: t.String() }),
-      detail: { summary: "List questions by topic" },
+      detail: { summary: "List questions by topic (teacher: own + shared)" },
     },
   )
   .get(
     "/:id",
-    async ({ params }) => questionService.getById(params.id),
+    async ({ params, authUser }) => questionService.getById(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Get question detail with options" },
@@ -28,7 +28,7 @@ export const questionsController = new Elysia({
   .guard(requireRole("ADMIN", "TEACHER"))
   .post(
     "/",
-    async ({ body }) => questionService.create(body),
+    async ({ body, authUser }) => questionService.create(body, authUser),
     {
       body: t.Object({
         topicId: t.String(),
@@ -41,6 +41,7 @@ export const questionsController = new Elysia({
           t.Literal("MULTI_SELECT"),
           t.Literal("URAIAN_PENDEK"),
         ]),
+        isShared: t.Optional(t.Boolean()),
         minWordCount: t.Optional(t.Number()),
         maxWordCount: t.Optional(t.Number()),
         answerKey: t.Optional(t.String()),
@@ -58,7 +59,7 @@ export const questionsController = new Elysia({
   )
   .put(
     "/:id",
-    async ({ params, body }) => questionService.update(params.id, body),
+    async ({ params, body, authUser }) => questionService.update(params.id, body, authUser),
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({
@@ -73,6 +74,7 @@ export const questionsController = new Elysia({
             t.Literal("URAIAN_PENDEK"),
           ]),
         ),
+        isShared: t.Optional(t.Boolean()),
         minWordCount: t.Optional(t.Nullable(t.Number())),
         maxWordCount: t.Optional(t.Nullable(t.Number())),
         answerKey: t.Optional(t.String()),
@@ -90,7 +92,7 @@ export const questionsController = new Elysia({
   )
   .delete(
     "/:id",
-    async ({ params }) => questionService.remove(params.id),
+    async ({ params, authUser }) => questionService.remove(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Delete question" },

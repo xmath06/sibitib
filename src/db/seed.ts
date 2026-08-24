@@ -16,6 +16,7 @@ import {
   examSchedules,
   scheduleAllocations,
   scheduleTargets,
+  teacherSubjects,
 } from "@/db/schema";
 import { hashPassword } from "@/utils/password";
 import {
@@ -91,18 +92,25 @@ async function main() {
     .returning();
   const [aljabar] = await db
     .insert(topics)
-    .values({ subjectId: matematika!.id, name: "Aljabar" })
+    .values({ subjectId: matematika!.id, name: "Aljabar", createdByUserId: teacher!.id })
     .returning();
   const [geometri] = await db
     .insert(topics)
-    .values({ subjectId: matematika!.id, name: "Geometri" })
+    .values({ subjectId: matematika!.id, name: "Geometri", createdByUserId: teacher!.id })
     .returning();
   const [trigonometri] = await db
     .insert(topics)
-    .values({ subjectId: matematika!.id, name: "Trigonometri" })
+    .values({ subjectId: matematika!.id, name: "Trigonometri", createdByUserId: teacher!.id })
     .returning();
 
   console.log(`✓ Subject: ${matematika?.name}, Topics: ${aljabar?.name}, ${geometri?.name}, ${trigonometri?.name}`);
+
+  // ===== Teacher ↔ Subject mapping =====
+  await db.insert(teacherSubjects).values([
+    { userId: teacher!.id, subjectId: matematika!.id },
+    { userId: teacher!.id, subjectId: agamaIslam!.id },
+  ]).onConflictDoNothing();
+  console.log(`✓ Teacher "${teacher?.username}" mengampu: ${matematika?.name}, ${agamaIslam?.name}`);
 
   // ===== Questions & Options =====
   const [q1, q2, q3] = await db
@@ -110,11 +118,14 @@ async function main() {
     .values([
       {
         topicId: aljabar!.id,
+        createdByUserId: teacher!.id,
+        isShared: true,
         questionText: "Berapakah hasil dari 2 + 2?",
         questionType: "MCQ",
       },
       {
         topicId: aljabar!.id,
+        createdByUserId: teacher!.id,
         questionText: "Jelaskan konsep variabel dalam aljabar.",
         questionType: "ESSAY",
         minWordCount: 10,
@@ -122,6 +133,7 @@ async function main() {
       },
       {
         topicId: aljabar!.id,
+        createdByUserId: teacher!.id,
         questionText: "Manakah yang merupakan bilangan genap?",
         questionType: "MULTI_SELECT",
       },
@@ -146,21 +158,27 @@ async function main() {
     .values([
       {
         topicId: geometri!.id,
+        createdByUserId: teacher!.id,
+        isShared: true,
         questionText: GEO_SQUARE,
         questionType: "MCQ",
       },
       {
         topicId: geometri!.id,
+        createdByUserId: teacher!.id,
         questionText: GEO_TRI,
         questionType: "MCQ",
       },
       {
         topicId: geometri!.id,
+        createdByUserId: teacher!.id,
         questionText: GEO_CUBE,
         questionType: "MCQ",
       },
       {
         topicId: geometri!.id,
+        createdByUserId: teacher!.id,
+        isShared: true,
         questionText: GEO_TWO,
         questionType: "MCQ",
       },
@@ -198,16 +216,19 @@ async function main() {
     .values([
       {
         topicId: trigonometri!.id,
+        createdByUserId: teacher!.id,
         questionText: TRIG_SINE_DEG,
         questionType: "MCQ",
       },
       {
         topicId: trigonometri!.id,
+        createdByUserId: teacher!.id,
         questionText: TRIG_SINE_RAD,
         questionType: "MCQ",
       },
       {
         topicId: trigonometri!.id,
+        createdByUserId: teacher!.id,
         questionText: TRIG_TWO,
         questionType: "MCQ",
       },

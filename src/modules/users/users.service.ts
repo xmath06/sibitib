@@ -1,6 +1,6 @@
 import { and, eq, ne, ilike, count } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, teacherSubjects, subjects } from "@/db/schema";
 import type { UserRole, Religion } from "@/db/schema/users";
 import { hashPassword } from "@/utils/password";
 import { conflict, notFound } from "@/middleware/errors";
@@ -117,5 +117,31 @@ export const userService = {
     if (!existing) throw notFound("User not found");
     await db.delete(users).where(eq(users.id, id));
     return { success: true };
+  },
+
+  // ===== Teacher ↔ Subject mapping (admin only) =====
+  async getSubjects(userId: string) {
+    const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!user) throw notFound("User not found");
+    const rows = await db.query.teacherSubjects.findMany({
+      where: eq(teacherSubjects.userId, userId),
+      with: { subject: true },
+    });
+    return rows.map((r) => r.subject);
+  },
+
+  async setSubjects(userId: string, subjectIds: string[]) {
+    const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (!user) throw notFound("User not found");
+
+    await db.delete(teacherSubjects).where(eq(teacherSubjects.userId, userId));
+    const unique = Array.from(new Set(subjectIds)).filter(Boolean);
+    if (unique.length) {
+      await db
+        .insert(teacherSubjects)
+        .values(unique.map((subjectId) => ({ userId, subjectId })))
+        .onConflictDoNothing();
+    }
+    return this.getSubjects(userId);
   },
 };

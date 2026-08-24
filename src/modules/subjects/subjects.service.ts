@@ -1,8 +1,9 @@
-import { and, eq, ilike, count } from "drizzle-orm";
+import { and, eq, ilike, count, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { subjects, topics } from "@/db/schema";
+import { subjects, topics, teacherSubjects } from "@/db/schema";
 import type { Religion } from "@/db/schema/users";
-import { conflict, notFound } from "@/middleware/errors";
+import type { AuthUser } from "@/middleware/auth";
+import { conflict, forbidden, notFound } from "@/middleware/errors";
 
 export interface CreateSubjectInput {
   code: string;
@@ -17,12 +18,49 @@ export interface UpdateSubjectInput {
 }
 
 export const subjectService = {
-  async list(query: { search?: string; page?: number; limit?: number }) {
+  // Cek apakah seorang guru mengampu subject tertentu.
+  async teacherTeachesSubject(userId: string, subjectId: string): Promise<boolean> {
+    const row = await db.query.teacherSubjects.findFirst({
+      where: and(
+        eq(teacherSubjects.userId, userId),
+        eq(teacherSubjects.subjectId, subjectId),
+      ),
+    });
+    return !!row;
+  },
+
+  // Kembalikan daftar subjectId yang diampu guru (kosong untuk non-teacher).
+  async listTeacherSubjectIds(userId: string): Promise<string[]> {
+    const rows = await db.query.teacherSubjects.findMany({
+      where: eq(teacherSubjects.userId, userId),
+      columns: { subjectId: true },
+    });
+    return rows.map((r) => r.subjectId);
+  },
+
+  async list(query: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    authUser?: AuthUser;
+  }) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(10000, Math.max(1, query.limit ?? 50));
     const offset = (page - 1) * limit;
 
-    const where = query.search ? ilike(subjects.name, `%${query.search}%`) : undefined;
+    const conditions = [];
+    if (query.search) conditions.push(ilike(subjects.name, `%${query.search}%`));
+
+    // TEACHER hanya melihat subject yang diampu.
+    if (query.authUser && query.authUser.role === "TEACHER") {
+      const ids = await this.listTeacherSubjectIds(query.authUser.id);
+      if (ids.length === 0) {
+        return { data: [], pagination: { page, limit, total: 0 } };
+      }
+      conditions.push(inArray(subjects.id, ids));
+    }
+
+    const where = conditions.length ? and(...conditions) : undefined;
     const rows = await db.query.subjects.findMany({
       where,
       orderBy: (t, { asc }) => [asc(t.code)],
@@ -87,32 +125,75 @@ export const subjectService = {
 
 // ===== Topics =====
 export const topicService = {
-  async create(subjectId: string, name: string) {
+  async assertTeacherCanManage(userId: string, subjectId: string) {
+    const ok = await subjectService.teacherTeachesSubject(userId, subjectId);
+    if (!ok) throw forbidden("Anda tidak mengampu mata pelajaran ini");
+  },
+
+  async create(subjectId: string, name: string, authUser?: AuthUser) {
     const subj = await db.query.subjects.findFirst({ where: eq(subjects.id, subjectId) });
     if (!subj) throw notFound("Subject not found");
-    const [row] = await db.insert(topics).values({ subjectId, name }).returning();
+    if (authUser?.role === "TEACHER") {
+      await this.assertTeacherCanManage(authUser.id, subjectId);
+    }
+    const [row] = await db
+      .insert(topics)
+      .values({ subjectId, name, createdByUserId: authUser!.id })
+      .returning();
     return row!;
   },
 
-  async update(id: string, name: string) {
+  async update(id: string, name: string, authUser?: AuthUser) {
     const existing = await db.query.topics.findFirst({ where: eq(topics.id, id) });
     if (!existing) throw notFound("Topic not found");
+    if (authUser?.role === "TEACHER") {
+      await this.assertTeacherCanManage(authUser.id, existing.subjectId);
+    }
     const [row] = await db.update(topics).set({ name }).where(eq(topics.id, id)).returning();
     return row!;
   },
 
-  async remove(id: string) {
+  async remove(id: string, authUser?: AuthUser) {
     const existing = await db.query.topics.findFirst({ where: eq(topics.id, id) });
     if (!existing) throw notFound("Topic not found");
+    if (authUser?.role === "TEACHER") {
+      await this.assertTeacherCanManage(authUser.id, existing.subjectId);
+    }
     await db.delete(topics).where(eq(topics.id, id));
     return { success: true };
   },
 
-  async listBySubject(subjectId: string) {
-    return db.query.topics.findMany({
+  async listBySubject(subjectId: string, authUser?: AuthUser) {
+    const subj = await db.query.subjects.findFirst({ where: eq(subjects.id, subjectId) });
+    if (!subj) throw notFound("Subject not found");
+    if (authUser?.role === "TEACHER") {
+      await this.assertTeacherCanManage(authUser.id, subjectId);
+    }
+
+    const rows = await db.query.topics.findMany({
       where: and(eq(topics.subjectId, subjectId)),
       orderBy: (t, { asc }) => [asc(t.name)],
-      with: { questions: { with: { options: true } } },
+      with: {
+        questions: {
+          columns: { id: true, createdByUserId: true, isShared: true },
+        },
+        createdByUser: { columns: { id: true, name: true } },
+      },
+    });
+
+    return rows.map((t) => {
+      const ownCount = t.questions.filter(
+        (q) => authUser && q.createdByUserId === authUser.id,
+      ).length;
+      const sharedCount = t.questions.filter(
+        (q) => q.isShared && q.createdByUserId !== (authUser?.id ?? ""),
+      ).length;
+      return {
+        ...t,
+        ownQuestionCount: ownCount,
+        sharedQuestionCount: sharedCount,
+        isOwnedByMe: !!authUser && t.createdByUserId === authUser.id,
+      };
     });
   },
 };
