@@ -12,7 +12,7 @@ import type { ScheduleCategory, TargetType } from "@/db/schema/examSchedules";
 import type { Religion } from "@/db/schema/users";
 import type { AuthUser } from "@/middleware/auth";
 import { notFound, badRequest, forbidden } from "@/middleware/errors";
-import { getAdminIds, isVisibleToTeacher } from "@/utils/ownership";
+import { getAdminIds, isVisibleToTeacher, resolveOwnerId } from "@/utils/ownership";
 
 export interface CreateScheduleInput {
   packageId: string;
@@ -27,6 +27,7 @@ export interface CreateScheduleInput {
   targetReligion?: Religion | null;
   targetClassIds?: string[];
   targetGradeLevels?: number[];
+  createdByUserId?: string;
 }
 
 export interface UpdateScheduleInput {
@@ -169,7 +170,7 @@ export const scheduleService = {
         showResultImmediately: input.showResultImmediately ?? true,
         targetType: input.targetType ?? "ALL_STUDENTS",
         targetReligion: input.targetReligion ?? null,
-        createdByUserId: authUser!.id,
+        createdByUserId: resolveOwnerId(input, authUser),
       })
       .returning();
 

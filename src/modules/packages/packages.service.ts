@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { examPackages, packageQuestions } from "@/db/schema";
 import type { AuthUser } from "@/middleware/auth";
 import { notFound, forbidden } from "@/middleware/errors";
-import { getAdminIds, isVisibleToTeacher } from "@/utils/ownership";
+import { getAdminIds, isVisibleToTeacher, resolveOwnerId } from "@/utils/ownership";
 import {
   buildDocx,
   paragraph,
@@ -69,6 +69,7 @@ export interface CreatePackageInput {
   isRandomOptions?: boolean;
   questionIds?: string[];
   typeScoreWeight?: Record<string, number>;
+  createdByUserId?: string;
 }
 
 export interface UpdatePackageInput {
@@ -187,7 +188,7 @@ export const packageService = {
         isRandomQuestions: input.isRandomQuestions ?? false,
         isRandomOptions: input.isRandomOptions ?? false,
         typeScoreWeight: input.typeScoreWeight ?? {},
-        createdByUserId: authUser!.id,
+        createdByUserId: resolveOwnerId(input, authUser),
       })
       .returning();
 

@@ -65,6 +65,7 @@ export const packagesController = new Elysia({
         isRandomOptions: t.Optional(t.Boolean()),
         questionIds: t.Optional(t.Array(t.String())),
         typeScoreWeight: t.Optional(t.Any()),
+        createdByUserId: t.Optional(t.String()),
       }),
       detail: { summary: "Create exam package" },
     },

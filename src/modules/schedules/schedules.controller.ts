@@ -96,6 +96,7 @@ export const schedulesController = new Elysia({
         targetReligion: t.Optional(t.Nullable(religionSchema)),
         targetClassIds: t.Optional(t.Array(t.String())),
         targetGradeLevels: t.Optional(t.Array(t.Number())),
+        createdByUserId: t.Optional(t.String()),
       }),
       detail: { summary: "Create schedule with targeting & allocations" },
     },

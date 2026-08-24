@@ -5,6 +5,7 @@ import type { QuestionType } from "@/db/schema/questions";
 import type { AuthUser } from "@/middleware/auth";
 import { forbidden, notFound } from "@/middleware/errors";
 import { subjectService } from "./subjects.service";
+import { resolveOwnerId } from "@/utils/ownership";
 
 export interface QuestionOptionInput {
   optionText: string;
@@ -20,6 +21,7 @@ export interface CreateQuestionInput {
   answerKey?: string;
   isShared?: boolean;
   options?: QuestionOptionInput[];
+  createdByUserId?: string;
 }
 
 export interface UpdateQuestionInput {
@@ -112,7 +114,7 @@ export const questionService = {
       .insert(questions)
       .values({
         topicId: input.topicId,
-        createdByUserId: authUser!.id,
+        createdByUserId: resolveOwnerId(input, authUser),
         isShared: input.isShared ?? false,
         questionText: input.questionText,
         questionType: input.questionType,

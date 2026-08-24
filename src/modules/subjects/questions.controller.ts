@@ -45,6 +45,7 @@ export const questionsController = new Elysia({
         minWordCount: t.Optional(t.Number()),
         maxWordCount: t.Optional(t.Number()),
         answerKey: t.Optional(t.String()),
+        createdByUserId: t.Optional(t.String()),
         options: t.Optional(
           t.Array(
             t.Object({
