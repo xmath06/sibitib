@@ -5,8 +5,10 @@ import {
   scheduleAllocations,
   studentExams,
 } from "@/db/schema";
+import type { AuthUser } from "@/middleware/auth";
 import { computeTimer } from "@/utils/timer";
-import { notFound } from "@/middleware/errors";
+import { notFound, forbidden } from "@/middleware/errors";
+import { getAdminIds, isVisibleToTeacher } from "@/utils/ownership";
 
 export interface MonitorStatus {
   scheduleId: string;
@@ -47,19 +49,12 @@ const DEFAULT_MOTIVATIONS = [
 const motivationStore = new Map<string, string>();
 
 export const monitorService = {
-  setMotivation(scheduleId: string, message: string) {
-    motivationStore.set(scheduleId, message);
-  },
-
-  clearMotivation(scheduleId: string) {
-    motivationStore.delete(scheduleId);
-  },
-
   /**
    * Status lengkap utk layar proyektor (SSE / polling).
    * Hitungan timer: berdasarkan attempt paling awal siswa yg sudah mulai.
    */
-  async getStatus(scheduleId: string): Promise<MonitorStatus> {
+  async getStatus(scheduleId: string, authUser?: AuthUser): Promise<MonitorStatus> {
+    await this.assertVisible(scheduleId, authUser);
     const schedule = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, scheduleId),
       with: { package: true },
@@ -132,7 +127,39 @@ export const monitorService = {
 
   // ===== Remote control guru =====
 
-  async setStatus(scheduleId: string, status: (typeof examSchedules.$inferSelect)["scheduleStatus"]) {
+  // Visibilitas (read): guru hanya boleh lihat jadwal milik sendiri / buatan admin.
+  async assertVisible(scheduleId: string, authUser?: AuthUser) {
+    if (authUser?.role !== "TEACHER") return; // ADMIN bebas
+    const schedule = await db.query.examSchedules.findFirst({
+      where: eq(examSchedules.id, scheduleId),
+      columns: { createdByUserId: true },
+    });
+    if (!schedule) throw notFound("Schedule not found");
+    const adminIds = await getAdminIds();
+    if (!isVisibleToTeacher(schedule.createdByUserId, authUser.id, adminIds)) {
+      throw notFound("Schedule not found");
+    }
+  },
+
+  // Edit rights: guru hanya boleh atur jadwal milik sendiri.
+  async assertEditable(scheduleId: string, authUser?: AuthUser) {
+    if (authUser?.role !== "TEACHER") return; // ADMIN bebas
+    const schedule = await db.query.examSchedules.findFirst({
+      where: eq(examSchedules.id, scheduleId),
+      columns: { createdByUserId: true },
+    });
+    if (!schedule) throw notFound("Schedule not found");
+    if (schedule.createdByUserId !== authUser.id) {
+      throw forbidden("Anda hanya dapat mengatur jadwal buatan sendiri");
+    }
+  },
+
+  async setStatus(
+    scheduleId: string,
+    status: (typeof examSchedules.$inferSelect)["scheduleStatus"],
+    authUser?: AuthUser,
+  ) {
+    await this.assertEditable(scheduleId, authUser);
     const schedule = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, scheduleId),
     });
@@ -142,20 +169,21 @@ export const monitorService = {
       .update(examSchedules)
       .set({ scheduleStatus: status })
       .where(eq(examSchedules.id, scheduleId));
-    return this.getStatus(scheduleId);
+    return this.getStatus(scheduleId, authUser);
   },
 
   /** Pause ujian: semua siswa berhenti, timer dihitung mundur berhenti. */
-  pause(scheduleId: string) {
-    return this.setStatus(scheduleId, "PAUSED");
+  pause(scheduleId: string, authUser?: AuthUser) {
+    return this.setStatus(scheduleId, "PAUSED", authUser);
   },
 
-  resume(scheduleId: string) {
-    return this.setStatus(scheduleId, "ON_GOING");
+  resume(scheduleId: string, authUser?: AuthUser) {
+    return this.setStatus(scheduleId, "ON_GOING", authUser);
   },
 
   /** Tambah waktu (menit) utk semua peserta. */
-  async addTime(scheduleId: string, minutes: number) {
+  async addTime(scheduleId: string, minutes: number, authUser?: AuthUser) {
+    await this.assertEditable(scheduleId, authUser);
     if (minutes <= 0) {
       // minimal 1 menit
       minutes = 1;
@@ -170,6 +198,16 @@ export const monitorService = {
       .update(examSchedules)
       .set({ timeExtensionMinutes: newExtension })
       .where(eq(examSchedules.id, scheduleId));
-    return this.getStatus(scheduleId);
+    return this.getStatus(scheduleId, authUser);
+  },
+
+  setMotivation(scheduleId: string, message: string, authUser?: AuthUser) {
+    this.assertEditable(scheduleId, authUser);
+    motivationStore.set(scheduleId, message);
+  },
+
+  clearMotivation(scheduleId: string, authUser?: AuthUser) {
+    this.assertEditable(scheduleId, authUser);
+    motivationStore.delete(scheduleId);
   },
 };

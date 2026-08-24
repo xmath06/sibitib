@@ -10,8 +10,11 @@ export const packagesController = new Elysia({
 
   .get(
     "/",
-    async ({ query }) =>
-      packageService.list({ search: query.search, page: query.page, limit: query.limit }),
+    async ({ query, authUser }) =>
+      packageService.list(
+        { search: query.search, page: query.page, limit: query.limit },
+        authUser,
+      ),
     {
       query: t.Object({
         search: t.Optional(t.String()),
@@ -23,7 +26,7 @@ export const packagesController = new Elysia({
   )
   .get(
     "/:id",
-    async ({ params }) => packageService.getById(params.id),
+    async ({ params, authUser }) => packageService.getById(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Get package with questions" },
@@ -50,7 +53,7 @@ export const packagesController = new Elysia({
   .guard(requireRole("ADMIN", "TEACHER"))
   .post(
     "/",
-    async ({ body }) => packageService.create(body),
+    async ({ body, authUser }) => packageService.create(body, authUser),
     {
       body: t.Object({
         subjectId: t.String(),
@@ -68,7 +71,7 @@ export const packagesController = new Elysia({
   )
   .put(
     "/:id",
-    async ({ params, body }) => packageService.update(params.id, body),
+    async ({ params, body, authUser }) => packageService.update(params.id, body, authUser),
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({
@@ -87,7 +90,7 @@ export const packagesController = new Elysia({
   )
   .delete(
     "/:id",
-    async ({ params }) => packageService.remove(params.id),
+    async ({ params, authUser }) => packageService.remove(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Delete exam package" },

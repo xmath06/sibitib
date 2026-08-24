@@ -8,6 +8,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { subjects } from "./subjects";
+import { users } from "./users";
 
 export const examPackages = pgTable("exam_packages", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -23,6 +24,10 @@ export const examPackages = pgTable("exam_packages", {
   isRandomOptions: boolean("is_random_options").notNull().default(false),
   // Pengali skor per tipe soal (kecuali MCQ yang berbobot per opsi).
   typeScoreWeight: jsonb("type_score_weight").notNull().default({}),
+  // Kepemilikan: null = buatan admin (global, read-only untuk guru).
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
 });
 
 export type ExamPackage = typeof examPackages.$inferSelect;

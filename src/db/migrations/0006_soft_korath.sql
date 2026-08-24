@@ -1,0 +1,4 @@
+ALTER TABLE "exam_packages" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "exam_schedules" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "exam_packages" ADD CONSTRAINT "exam_packages_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "exam_schedules" ADD CONSTRAINT "exam_schedules_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;

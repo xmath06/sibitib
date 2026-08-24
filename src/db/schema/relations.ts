@@ -72,6 +72,10 @@ export const examPackagesRelations = relations(examPackages, ({ one, many }) => 
     fields: [examPackages.subjectId],
     references: [subjects.id],
   }),
+  createdByUser: one(users, {
+    fields: [examPackages.createdByUserId],
+    references: [users.id],
+  }),
   packageQuestions: many(packageQuestions),
   schedules: many(examSchedules),
 }));
@@ -96,6 +100,10 @@ export const examSchedulesRelations = relations(
     package: one(examPackages, {
       fields: [examSchedules.packageId],
       references: [examPackages.id],
+    }),
+    createdByUser: one(users, {
+      fields: [examSchedules.createdByUserId],
+      references: [users.id],
     }),
     allocations: many(scheduleAllocations),
     targets: many(scheduleTargets),

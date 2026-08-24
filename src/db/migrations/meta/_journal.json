@@ -43,6 +43,13 @@
       "when": 1787595488197,
       "tag": "0005_outgoing_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787599106907,
+      "tag": "0006_soft_korath",
+      "breakpoints": true
     }
   ]
 }

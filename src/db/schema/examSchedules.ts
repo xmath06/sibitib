@@ -7,7 +7,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { examPackages } from "./examPackages";
-import { RELIGIONS } from "./users";
+import { RELIGIONS, users } from "./users";
 
 export const TARGET_TYPES = [
   "ALL_STUDENTS",
@@ -47,6 +47,10 @@ export const examSchedules = pgTable("exam_schedules", {
     .notNull()
     .default("ALL_STUDENTS"),
   targetReligion: text("target_religion", { enum: RELIGIONS }),
+  // Kepemilikan: null = buatan admin (global, read-only untuk guru).
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
 });
 
 export type ExamSchedule = typeof examSchedules.$inferSelect;

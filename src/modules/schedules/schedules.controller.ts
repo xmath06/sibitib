@@ -36,13 +36,16 @@ export const schedulesController = new Elysia({
 
   .get(
     "/",
-    async ({ query }) =>
-      scheduleService.list({
-        search: query.search,
-        status: query.status,
-        page: query.page,
-        limit: query.limit,
-      }),
+    async ({ query, authUser }) =>
+      scheduleService.list(
+        {
+          search: query.search,
+          status: query.status,
+          page: query.page,
+          limit: query.limit,
+        },
+        authUser,
+      ),
     {
       query: t.Object({
         search: t.Optional(t.String()),
@@ -55,7 +58,7 @@ export const schedulesController = new Elysia({
   )
   .get(
     "/:id",
-    async ({ params }) => scheduleService.getById(params.id),
+    async ({ params, authUser }) => scheduleService.getById(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Get schedule detail" },
@@ -63,12 +66,15 @@ export const schedulesController = new Elysia({
   )
   .post(
     "/",
-    async ({ body }) =>
-      scheduleService.create({
-        ...body,
-        startTime: new Date(body.startTime),
-        endTime: body.endTime ? new Date(body.endTime) : null,
-      }),
+    async ({ body, authUser }) =>
+      scheduleService.create(
+        {
+          ...body,
+          startTime: new Date(body.startTime),
+          endTime: body.endTime ? new Date(body.endTime) : null,
+        },
+        authUser,
+      ),
     {
       body: t.Object({
         packageId: t.String(),
@@ -100,18 +106,22 @@ export const schedulesController = new Elysia({
       // Guru hanya boleh mengedit jadwal yang BELUM dimulai.
       // Admin bebas mengedit kapan saja (termasuk yang waktunya sudah terlewat).
       if (authUser.role === "TEACHER") {
-        const existing = await scheduleService.getById(params.id);
+        const existing = await scheduleService.getById(params.id, authUser);
         const started =
           existing.startTime <= new Date() || existing.scheduleStatus !== "SCHEDULED";
         if (started) {
           throw forbidden("Guru hanya dapat mengedit jadwal yang belum dimulai");
         }
       }
-      return scheduleService.update(params.id, {
-        ...body,
-        startTime: body.startTime ? new Date(body.startTime) : undefined,
-        endTime: body.endTime !== undefined ? (body.endTime ? new Date(body.endTime) : null) : undefined,
-      });
+      return scheduleService.update(
+        params.id,
+        {
+          ...body,
+          startTime: body.startTime ? new Date(body.startTime) : undefined,
+          endTime: body.endTime !== undefined ? (body.endTime ? new Date(body.endTime) : null) : undefined,
+        },
+        authUser,
+      );
     },
     {
       params: t.Object({ id: t.String() }),
@@ -141,7 +151,7 @@ export const schedulesController = new Elysia({
   )
   .delete(
     "/:id",
-    async ({ params }) => scheduleService.remove(params.id),
+    async ({ params, authUser }) => scheduleService.remove(params.id, authUser),
     {
       params: t.Object({ id: t.String() }),
       detail: { summary: "Delete schedule" },
@@ -149,8 +159,8 @@ export const schedulesController = new Elysia({
   )
   .post(
     "/:id/allocate",
-    async ({ params, body }) =>
-      scheduleService.allocateStudents(params.id, body.studentIds),
+    async ({ params, body, authUser }) =>
+      scheduleService.allocateStudents(params.id, body.studentIds, authUser),
     {
       params: t.Object({ id: t.String() }),
       body: t.Object({ studentIds: t.Array(t.String()) }),

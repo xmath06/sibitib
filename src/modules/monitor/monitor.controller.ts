@@ -12,9 +12,9 @@ export const monitorController = new Elysia({
   // Status tunggal (untuk polling)
   .get(
     "/:scheduleId/status",
-    async ({ params }) => ({
+    async ({ params, authUser }) => ({
       success: true,
-      data: await monitorService.getStatus(params.scheduleId),
+      data: await monitorService.getStatus(params.scheduleId, authUser),
     }),
     {
       params: t.Object({ scheduleId: t.String() }),
@@ -26,12 +26,12 @@ export const monitorController = new Elysia({
   // Kirim status tiap 1 detik (bisa di-tuning).
   .get(
     "/:scheduleId/stream",
-    ({ params }) =>
+    ({ params, authUser }) =>
       sse(
         (async function* () {
           for (;;) {
             try {
-              const status = await monitorService.getStatus(params.scheduleId);
+              const status = await monitorService.getStatus(params.scheduleId, authUser);
               yield { data: status };
             } catch (e) {
               yield {
@@ -55,9 +55,9 @@ export const monitorController = new Elysia({
   // Remote control: pause
   .post(
     "/:scheduleId/pause",
-    async ({ params }) => ({
+    async ({ params, authUser }) => ({
       success: true,
-      data: await monitorService.pause(params.scheduleId),
+      data: await monitorService.pause(params.scheduleId, authUser),
     }),
     {
       params: t.Object({ scheduleId: t.String() }),
@@ -68,9 +68,9 @@ export const monitorController = new Elysia({
   // Remote control: resume
   .post(
     "/:scheduleId/resume",
-    async ({ params }) => ({
+    async ({ params, authUser }) => ({
       success: true,
-      data: await monitorService.resume(params.scheduleId),
+      data: await monitorService.resume(params.scheduleId, authUser),
     }),
     {
       params: t.Object({ scheduleId: t.String() }),
@@ -81,9 +81,9 @@ export const monitorController = new Elysia({
   // Remote control: tambah waktu
   .post(
     "/:scheduleId/add-time",
-    async ({ params, body }) => ({
+    async ({ params, body, authUser }) => ({
       success: true,
-      data: await monitorService.addTime(params.scheduleId, body.minutes),
+      data: await monitorService.addTime(params.scheduleId, body.minutes, authUser),
     }),
     {
       params: t.Object({ scheduleId: t.String() }),
@@ -95,8 +95,8 @@ export const monitorController = new Elysia({
   // Motivasi di layar kelas
   .post(
     "/:scheduleId/motivation",
-    async ({ params, body }) => {
-      monitorService.setMotivation(params.scheduleId, body.message);
+    async ({ params, body, authUser }) => {
+      monitorService.setMotivation(params.scheduleId, body.message, authUser);
       return { success: true, data: { message: body.message } };
     },
     {
@@ -107,8 +107,8 @@ export const monitorController = new Elysia({
   )
   .delete(
     "/:scheduleId/motivation",
-    async ({ params }) => {
-      monitorService.clearMotivation(params.scheduleId);
+    async ({ params, authUser }) => {
+      monitorService.clearMotivation(params.scheduleId, authUser);
       return { success: true };
     },
     {

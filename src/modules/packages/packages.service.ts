@@ -1,8 +1,10 @@
-import { and, eq, ilike, count } from "drizzle-orm";
+import { and, eq, ilike, count, or, isNull, inArray } from "drizzle-orm";
 import { Paragraph, Table } from "docx";
 import { db } from "@/db";
 import { examPackages, packageQuestions } from "@/db/schema";
-import { notFound } from "@/middleware/errors";
+import type { AuthUser } from "@/middleware/auth";
+import { notFound, forbidden } from "@/middleware/errors";
+import { getAdminIds, isVisibleToTeacher } from "@/utils/ownership";
 import {
   buildDocx,
   paragraph,
@@ -82,12 +84,30 @@ export interface UpdatePackageInput {
 }
 
 export const packageService = {
-  async list(query: { search?: string; page?: number; limit?: number }) {
+  async list(
+    query: { search?: string; page?: number; limit?: number },
+    authUser?: AuthUser,
+  ) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(10000, Math.max(1, query.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    const where = query.search ? ilike(examPackages.title, `%${query.search}%`) : undefined;
+    const conditions = [];
+    if (query.search) conditions.push(ilike(examPackages.title, `%${query.search}%`));
+
+    // TEACHER: hanya paket milik sendiri ATAU buatan admin (global, read-only).
+    if (authUser?.role === "TEACHER") {
+      const adminIds = await getAdminIds();
+      conditions.push(
+        or(
+          eq(examPackages.createdByUserId, authUser.id),
+          isNull(examPackages.createdByUserId),
+          inArray(examPackages.createdByUserId, adminIds),
+        ),
+      );
+    }
+
+    const where = conditions.length ? and(...conditions) : undefined;
     const rows = await db.query.examPackages.findMany({
       where,
       orderBy: (t, { desc }) => [desc(t.title)],
@@ -95,6 +115,7 @@ export const packageService = {
       offset,
       with: {
         subject: true,
+        createdByUser: { columns: { id: true, name: true } },
         packageQuestions: {
           columns: { id: true },
           with: { question: { columns: { questionType: true }, with: { options: { columns: { scoreWeight: true } } } } },
@@ -118,17 +139,19 @@ export const packageService = {
           questionCount: packageQuestions.length,
           questionTypeCounts: typeCounts,
           maxScore: computeMaxScore({ typeScoreWeight: rest.typeScoreWeight, packageQuestions }),
+          isOwnedByMe: authUser ? rest.createdByUserId === authUser.id : false,
         };
       }),
       pagination: { page, limit, total: total[0]?.value ?? 0 },
     };
   },
 
-  async getById(id: string) {
+  async getById(id: string, authUser?: AuthUser) {
     const row = await db.query.examPackages.findFirst({
       where: eq(examPackages.id, id),
       with: {
         subject: true,
+        createdByUser: { columns: { id: true, name: true } },
         packageQuestions: {
           orderBy: (t, { asc }) => [asc(t.orderNumber)],
           with: { question: { with: { options: true, topic: true } } },
@@ -136,10 +159,20 @@ export const packageService = {
       },
     });
     if (!row) throw notFound("Exam package not found");
-    return { ...row, maxScore: computeMaxScore(row) };
+    if (authUser?.role === "TEACHER") {
+      const adminIds = await getAdminIds();
+      if (!isVisibleToTeacher(row.createdByUserId, authUser.id, adminIds)) {
+        throw notFound("Exam package not found");
+      }
+    }
+    return {
+      ...row,
+      maxScore: computeMaxScore(row),
+      isOwnedByMe: authUser ? row.createdByUserId === authUser.id : false,
+    };
   },
 
-  async create(input: CreatePackageInput) {
+  async create(input: CreatePackageInput, authUser?: AuthUser) {
     const qty = input.questionIds?.length ?? 0;
 
     const [pkg] = await db
@@ -154,18 +187,20 @@ export const packageService = {
         isRandomQuestions: input.isRandomQuestions ?? false,
         isRandomOptions: input.isRandomOptions ?? false,
         typeScoreWeight: input.typeScoreWeight ?? {},
+        createdByUserId: authUser!.id,
       })
       .returning();
 
     await this._syncQuestions(pkg!.id, input.questionIds ?? []);
-    return this.getById(pkg!.id);
+    return this.getById(pkg!.id, authUser);
   },
 
-  async update(id: string, input: UpdatePackageInput) {
+  async update(id: string, input: UpdatePackageInput, authUser?: AuthUser) {
     const existing = await db.query.examPackages.findFirst({
       where: eq(examPackages.id, id),
     });
     if (!existing) throw notFound("Exam package not found");
+    this.assertEditable(existing, authUser);
 
     const set: Record<string, unknown> = {};
     if (input.subjectId !== undefined) set.subjectId = input.subjectId;
@@ -188,16 +223,30 @@ export const packageService = {
       await this._syncQuestions(id, input.questionIds);
     }
 
-    return this.getById(pkg!.id);
+    return this.getById(pkg!.id, authUser);
   },
 
-  async remove(id: string) {
+  async remove(id: string, authUser?: AuthUser) {
     const existing = await db.query.examPackages.findFirst({
       where: eq(examPackages.id, id),
     });
     if (!existing) throw notFound("Exam package not found");
+    this.assertEditable(existing, authUser);
     await db.delete(examPackages).where(eq(examPackages.id, id));
     return { success: true };
+  },
+
+  // Guru hanya boleh mengubah/hapus paket buatan sendiri.
+  assertEditable(
+    existing: { createdByUserId: string | null },
+    authUser?: AuthUser,
+  ) {
+    if (
+      authUser?.role === "TEACHER" &&
+      existing.createdByUserId !== authUser.id
+    ) {
+      throw forbidden("Anda hanya dapat mengubah paket buatan sendiri");
+    }
   },
 
   async exportDocx(id: string): Promise<{ buffer: Uint8Array; filename: string }> {

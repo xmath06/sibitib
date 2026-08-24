@@ -10,7 +10,9 @@ import {
 } from "@/db/schema";
 import type { ScheduleCategory, TargetType } from "@/db/schema/examSchedules";
 import type { Religion } from "@/db/schema/users";
-import { notFound, badRequest } from "@/middleware/errors";
+import type { AuthUser } from "@/middleware/auth";
+import { notFound, badRequest, forbidden } from "@/middleware/errors";
+import { getAdminIds, isVisibleToTeacher } from "@/utils/ownership";
 
 export interface CreateScheduleInput {
   packageId: string;
@@ -68,12 +70,15 @@ async function syncScheduleTargets(
 
 export const scheduleService = {
   // Daftar jadwal beserta statistik siswa (untuk guru/admin)
-  async list(query: {
-    search?: string;
-    page?: number;
-    limit?: number;
-    status?: (typeof examSchedules.$inferSelect)["scheduleStatus"];
-  }) {
+  async list(
+    query: {
+      search?: string;
+      page?: number;
+      limit?: number;
+      status?: (typeof examSchedules.$inferSelect)["scheduleStatus"];
+    },
+    authUser?: AuthUser,
+  ) {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(10000, Math.max(1, query.limit ?? 20));
     const offset = (page - 1) * limit;
@@ -81,6 +86,19 @@ export const scheduleService = {
     const conditions = [];
     if (query.search) conditions.push(eq(examSchedules.title, query.search));
     if (query.status) conditions.push(eq(examSchedules.scheduleStatus, query.status));
+
+    // TEACHER: hanya jadwal milik sendiri ATAU buatan admin (global, read-only).
+    if (authUser?.role === "TEACHER") {
+      const adminIds = await getAdminIds();
+      conditions.push(
+        or(
+          eq(examSchedules.createdByUserId, authUser.id),
+          isNull(examSchedules.createdByUserId),
+          inArray(examSchedules.createdByUserId, adminIds),
+        ),
+      );
+    }
+
     const where = conditions.length ? and(...conditions) : undefined;
 
     const rows = await db.query.examSchedules.findMany({
@@ -91,17 +109,21 @@ export const scheduleService = {
       with: {
         package: { with: { subject: true } },
         allocations: { with: { student: true } },
+        createdByUser: { columns: { id: true, name: true } },
       },
     });
     const total = await db.select({ value: count() }).from(examSchedules).where(where);
 
     return {
-      data: rows,
+      data: rows.map((r) => ({
+        ...r,
+        isOwnedByMe: authUser ? r.createdByUserId === authUser.id : false,
+      })),
       pagination: { page, limit, total: total[0]?.value ?? 0 },
     };
   },
 
-  async getById(id: string) {
+  async getById(id: string, authUser?: AuthUser) {
     const row = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, id),
       with: {
@@ -114,13 +136,23 @@ export const scheduleService = {
           },
         },
         studentExams: { with: { student: true } },
+        createdByUser: { columns: { id: true, name: true } },
       },
     });
     if (!row) throw notFound("Schedule not found");
-    return row;
+    if (authUser?.role === "TEACHER") {
+      const adminIds = await getAdminIds();
+      if (!isVisibleToTeacher(row.createdByUserId, authUser.id, adminIds)) {
+        throw notFound("Schedule not found");
+      }
+    }
+    return {
+      ...row,
+      isOwnedByMe: authUser ? row.createdByUserId === authUser.id : false,
+    };
   },
 
-  async create(input: CreateScheduleInput) {
+  async create(input: CreateScheduleInput, authUser?: AuthUser) {
     if (input.endTime && input.startTime > input.endTime) {
       throw badRequest("startTime must be before endTime");
     }
@@ -137,6 +169,7 @@ export const scheduleService = {
         showResultImmediately: input.showResultImmediately ?? true,
         targetType: input.targetType ?? "ALL_STUDENTS",
         targetReligion: input.targetReligion ?? null,
+        createdByUserId: authUser!.id,
       })
       .returning();
 
@@ -146,14 +179,15 @@ export const scheduleService = {
       studentIds: input.studentIds,
     });
     await this.recomputeAllocations(schedule!.id);
-    return this.getById(schedule!.id);
+    return this.getById(schedule!.id, authUser);
   },
 
-  async update(id: string, input: UpdateScheduleInput) {
+  async update(id: string, input: UpdateScheduleInput, authUser?: AuthUser) {
     const existing = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, id),
     });
     if (!existing) throw notFound("Schedule not found");
+    this.assertEditable(existing, authUser);
 
     if (input.startTime && input.endTime && input.startTime > input.endTime) {
       throw badRequest("startTime must be before endTime");
@@ -188,27 +222,42 @@ export const scheduleService = {
       await this.recomputeAllocations(id);
     }
 
-    return this.getById(id);
+    return this.getById(id, authUser);
   },
 
-  async remove(id: string) {
+  async remove(id: string, authUser?: AuthUser) {
     const existing = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, id),
     });
     if (!existing) throw notFound("Schedule not found");
+    this.assertEditable(existing, authUser);
     await db.delete(examSchedules).where(eq(examSchedules.id, id));
     return { success: true };
   },
 
+  // Guru hanya boleh mengubah/hapus jadwal buatan sendiri.
+  assertEditable(
+    existing: { createdByUserId: string | null },
+    authUser?: AuthUser,
+  ) {
+    if (
+      authUser?.role === "TEACHER" &&
+      existing.createdByUserId !== authUser.id
+    ) {
+      throw forbidden("Anda hanya dapat mengubah jadwal buatan sendiri");
+    }
+  },
+
   // ===== Alokasi siswa =====
-  async allocateStudents(scheduleId: string, studentIds: string[]) {
+  async allocateStudents(scheduleId: string, studentIds: string[], authUser?: AuthUser) {
     const schedule = await db.query.examSchedules.findFirst({
       where: eq(examSchedules.id, scheduleId),
     });
     if (!schedule) throw notFound("Schedule not found");
+    this.assertEditable(schedule, authUser);
 
     await this._syncAllocations(scheduleId, studentIds);
-    return this.getById(scheduleId);
+    return this.getById(scheduleId, authUser);
   },
 
   async _syncAllocations(scheduleId: string, studentIds: string[]) {
