@@ -370,8 +370,19 @@ export const examService = {
       if (type === "POLY_CHOICE") {
         // Pilihan Ganda Berbobot: jumlah bobot opsi terpilih (boleh parsial), tanpa pengali paket.
         for (const a of ans) gained += a.selectedOption ? Number(a.selectedOption.scoreWeight) : 0;
+      } else if (type === "TRUE_FALSE") {
+        // Benar/Salah: skor per pernyataan — tiap opsi yang cocok kunci bernilai 1 poin.
+        const correctIds = new Set(
+          (q.options ?? []).filter((o) => Number(o.scoreWeight ?? 0) > 0).map((o) => o.id),
+        );
+        const selectedIds = new Set(ans.map((a) => a.selectedOptionId).filter(Boolean));
+        for (const opt of q.options ?? []) {
+          const keyIsTrue = correctIds.has(opt.id);
+          const studentSaidTrue = selectedIds.has(opt.id);
+          if (keyIsTrue === studentSaidTrue) gained += 1;
+        }
       } else {
-        // TRUE_FALSE / POLY_CHOICE / MULTI_SELECT: skor tetap 1 × pengali paket.
+        // MCQ / MULTI_SELECT: skor tetap 1 × pengali paket (all-or-nothing).
         const correctSet = (q.options ?? [])
           .filter((o) => Number(o.scoreWeight ?? 0) > 0)
           .map((o) => o.id);

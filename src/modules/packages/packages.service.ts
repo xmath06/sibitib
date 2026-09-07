@@ -50,6 +50,9 @@ function computeMaxScore(pkg: {
     if (t === "POLY_CHOICE") {
       const opts = pq.question.options ?? [];
       max += opts.reduce((mx, o) => Math.max(mx, Number(o.scoreWeight ?? 0)), 0);
+    } else if (t === "TRUE_FALSE") {
+      // Benar/Salah: 1 poin per pernyataan (jumlah opsi).
+      max += (pq.question.options ?? []).length;
     } else if ((PENGALI_TYPES as readonly string[]).includes(t)) {
       max += tw[t] ?? 1;
     } else {

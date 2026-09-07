@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { questions, options, topics } from "@/db/schema";
 import type { QuestionType } from "@/db/schema/questions";
@@ -174,7 +174,23 @@ export const questionService = {
     if (authUser?.role === "TEACHER" && existing.createdByUserId !== authUser.id) {
       throw forbidden("Anda hanya dapat menghapus soal buatan sendiri");
     }
-    await db.delete(questions).where(eq(questions.id, id));
+
+    // Hapus relasi manual dulu, baru soal.
+    // CASCADE dari DB juga bisa, tapi manual lebih aman & menghindari
+    // Neon unique-index bug pada Drizzle query builder.
+    await db.execute(
+      sql`DELETE FROM student_answers WHERE question_id = ${id}`
+    );
+    await db.execute(
+      sql`DELETE FROM package_questions WHERE question_id = ${id}`
+    );
+    await db.execute(
+      sql`DELETE FROM options WHERE question_id = ${id}`
+    );
+    await db.execute(
+      sql`DELETE FROM questions WHERE id = ${id}`
+    );
+
     return { success: true };
   },
 
