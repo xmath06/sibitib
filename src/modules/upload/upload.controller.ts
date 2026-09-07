@@ -25,15 +25,6 @@ export const uploadController = new Elysia({
       body: t.Object({
         file: t.File({
           maxSize: 10 * 1024 * 1024, // 10MB
-          type: [
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-            "image/gif",
-            "image/svg+xml",
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          ],
         }),
       }),
       detail: { summary: "Upload image/file for rich text editor" },

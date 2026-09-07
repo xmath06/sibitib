@@ -21,11 +21,56 @@ const ALLOWED_TYPES = new Set([
   "image/webp",
   "image/gif",
   "image/svg+xml",
+  "image/bmp",
+  "image/x-icon",
+  "image/avif",
+  "image/heic",
+  "image/heif",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
+const EXTENSION_TO_MIME: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".avif": "image/avif",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".pdf": "application/pdf",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+
+export function normalizeUploadedMimeType(file: Pick<File, "type" | "name">): string {
+  const typed = file.type?.trim().toLowerCase();
+  if (typed) return typed;
+
+  const lowerName = file.name.toLowerCase();
+  const ext = Object.keys(EXTENSION_TO_MIME).find((candidate) =>
+    lowerName.endsWith(candidate),
+  );
+  const mimeType = ext ? EXTENSION_TO_MIME[ext] : undefined;
+  return mimeType ?? "application/octet-stream";
+}
+
+export function isAllowedUploadType(file: Pick<File, "type" | "name">): boolean {
+  const mimeType = normalizeUploadedMimeType(file);
+  if (ALLOWED_TYPES.has(mimeType)) return true;
+
+  if (mimeType.startsWith("image/")) return true;
+
+  const lowerName = file.name.toLowerCase();
+  return Object.keys(EXTENSION_TO_MIME).some((candidate) =>
+    lowerName.endsWith(candidate),
+  );
+}
 
 // S3Client kompatibel dengan Cloudflare R2 & AWS S3 (path-style utk R2).
 const s3 = new S3Client({
@@ -58,9 +103,11 @@ export const storageService = {
         `File too large. Maximum size is ${MAX_SIZE / (1024 * 1024)}MB`,
       );
     }
-    if (!ALLOWED_TYPES.has(file.type)) {
+
+    const mimeType = normalizeUploadedMimeType(file);
+    if (!isAllowedUploadType(file)) {
       throw badRequest(
-        `File type "${file.type}" is not allowed. Allowed: images, PDF, DOCX`,
+        `File type "${file.type || mimeType}" is not allowed. Allowed: all image formats, PDF, DOCX`,
       );
     }
 
@@ -74,7 +121,7 @@ export const storageService = {
         Bucket: config.s3.bucket,
         Key: key,
         Body: bytes,
-        ContentType: file.type,
+        ContentType: mimeType,
         // Cache agresif untuk aset statis yang immutable
         CacheControl: "public, max-age=31536000, immutable",
       }),
